@@ -2,7 +2,7 @@ library(readr)
 library(tidyverse)
 
 # -------------------- READ IN DATA ------------------------------
-VotingData <- read_csv("./data/raw/38506-0001-Data.csv")
+VotingData <- read_csv("https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/raw/38506-0001-Data.csv", show_col_types = FALSE)
 
 
 
