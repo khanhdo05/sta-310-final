@@ -7,7 +7,6 @@ VotingData <- read_csv("https://raw.githubusercontent.com/khanhdo05/sta-310-fina
 
 
 # ------------------- CLEAN VOTING DATA --------------------------
-
 VotingData2020Clean <- VotingData %>%
   # only interested in the presidential selection in 2020
   filter(YEAR == 2020) %>%
@@ -15,3 +14,5 @@ VotingData2020Clean <- VotingData %>%
   # drop year and not interested in senate and partisan data
   select(-SEN_DEM_VOTES, -SEN_REP_VOTES, -SEN_DEM_RATIO, -SEN_REP_RATIO,
          -PARTISAN_INDEX_DEM, -PARTISAN_INDEX_REP, -YEAR)
+
+# --------------------- WRITE TO TABLE ---------------------------
