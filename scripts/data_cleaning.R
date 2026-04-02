@@ -11,8 +11,8 @@ VotingData2020Clean <- VotingData %>%
   # only interested in the presidential selection in 2020
   filter(YEAR == 2020) %>%
   
-  # drop year and not interested in senate and partisan data
-  select(-SEN_DEM_VOTES, -SEN_REP_VOTES, -SEN_DEM_RATIO, -SEN_REP_RATIO,
-         -PARTISAN_INDEX_DEM, -PARTISAN_INDEX_REP, -YEAR)
+  # drop year and not interested in senate data
+  select(-SEN_DEM_VOTES, -SEN_REP_VOTES, -SEN_DEM_RATIO, -SEN_REP_RATIO, -YEAR)
 
 # --------------------- WRITE TO TABLE ---------------------------
+write_csv(VotingData2020Clean, "./data/clean/VotingData2020.csv")
