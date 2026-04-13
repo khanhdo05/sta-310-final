@@ -145,4 +145,15 @@ write_csv(VotingData2020Clean, "./data/clean/VotingData2020.csv")
 write_csv(IncomeData201920Clean, "./data/clean/IncomeData2020.csv")
 write_csv(UnemploymentData2020Clean, "./data/clean/UnemploymentRate2020.csv")
 write_csv(EducationData201923Clean, "./data/clean/EducationData201923.csv")
-write_csv(EducationData201923Clean, "./data/clean/EducationData201923.csv")
+write_csv(PopulationData2020Clean, "./data/clean/PopulationData2020.csv")
+
+# ------------------- JOIN ALL TABLES --------------------------
+FinalData <- VotingData2020Clean %>%
+  mutate(FIPS = as.character(FIPS)) %>%
+  left_join(IncomeData201920Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
+  left_join(UnemploymentData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
+  left_join(EducationData201923Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
+  left_join(PopulationData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
+  select(FIPS, COUNTYNAME, everything())
+
+write_csv(FinalData, "./data/clean/FINAL_DATA.csv")
