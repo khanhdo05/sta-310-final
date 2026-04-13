@@ -154,6 +154,67 @@ FinalData <- VotingData2020Clean %>%
   left_join(UnemploymentData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   left_join(EducationData201923Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   left_join(PopulationData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
-  select(FIPS, COUNTYNAME, everything())
-
+  select(FIPS, COUNTYNAME, everything()) %>%
+  # CamelCase 
+  rename(
+    # Identity
+    CountyName            = COUNTYNAME,
+    
+    # Voting Variables
+    RegisteredVoters      = REG_VOTERS,
+    BallotsCast           = BALLOTS_CAST,
+    CitizenVotingAgePop   = CVAP,
+    RegisteredVotersPct   = REG_VOTERS_PCT,
+    VoterTurnoutPct       = VOTER_TURNOUT_PCT,
+    RegVoterTurnoutPct    = REG_VOTER_TURNOUT_PCT,
+    PresDemVotes          = PRES_DEM_VOTES,
+    PresRepVotes          = PRES_REP_VOTES,
+    PresDemRatio          = PRES_DEM_RATIO,
+    PresRepRatio          = PRES_REP_RATIO,
+    PartisanIndexDem      = PARTISAN_INDEX_DEM,
+    PartisanIndexRep      = PARTISAN_INDEX_REP,
+    
+    # Income / Tax Variables
+    NumTaxReturns         = N1,
+    TotalAgi              = A00100,
+    SalariesWages         = A00200,
+    BusinessNetIncome     = A00900,
+    CapitalGains          = A01000,
+    PensionsAnnuities     = A01700,
+    UnemploymentComp      = A02300,
+    SocialSecurityBenefits= A02500,
+    PartnershipIncome     = A26270,
+    MortgageInterest      = A19300,
+    CharitableContributions= A19700,
+    TotalTaxLiability     = A10300,
+    EicAmount             = A59660,
+    NumEicReturns         = N59660,
+    ChildTaxCredit        = A11070,
+    
+    # Unemployment
+    UnemploymentRate2020  = Unemployment_rate_2020,
+    
+    # Education
+    PctNoHs               = PCT_NO_HS,
+    PctHsOnly             = PCT_HS_ONLY,
+    PctSomeCollege        = PCT_SOME_COL,
+    PctBachelors          = PCT_BACH,
+    
+    # Population
+    CensusPop2020         = CENSUS_2020_POP,
+    NetMigration2020      = NET_MIG_2020,
+    BirthRate2020         = R_BIRTH_2020,
+    DeathRate2020         = R_DEATH_2020
+  ) %>%
+  
+  # remove 46113 because it has been changed to Oglala Lakota County (46102)
+  # remove 51515 because it has been changed to Bedford County (51019)
+  filter(!(FIPS %in% c(46113, 51019))) %>%
+  
+  # fill out a missing county name
+  mutate(CountyName = case_when(
+    FIPS == "15005" ~ "Kalawao County",
+    TRUE ~ CountyName
+  ))
+  
 write_csv(FinalData, "./data/clean/FINAL_DATA.csv")
