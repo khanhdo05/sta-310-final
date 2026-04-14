@@ -1,5 +1,6 @@
 library(readr)
 library(tidyverse)
+library(tidycensus)
 
 # -------------------- READ IN DATA ------------------------------
 VotingData <- read_csv("https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/raw/38506-0001-Data.csv", show_col_types = FALSE)
@@ -7,6 +8,7 @@ IncomeData <- read_csv("https://raw.githubusercontent.com/khanhdo05/sta-310-fina
 UnemploymentData <- read_csv("https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/raw/Unemployment2023.csv", show_col_types = FALSE) # this file has data from 2000 - 2023
 EducationData <- read_csv("https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/raw/Education2023.csv", show_col_types = FALSE) # this file has data from 1970 - 2023
 PopulationData <- read_csv("https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/raw/PopulationEstimates.csv", show_col_types = FALSE) # this file has data from 2020 - 2023
+census_api_key("902576123c865062163b7d7203d1aa2c49a0c58d")
 
 # ------------------- CLEAN VOTING DATA --------------------------
 VotingData2020Clean <- VotingData %>%
@@ -19,8 +21,8 @@ VotingData2020Clean <- VotingData %>%
   # rename col
   rename(FIPS = STCOFIPS10) %>%
   
-  # drop year and not interested in senate data
-  select(-SEN_DEM_VOTES, -SEN_REP_VOTES, -SEN_DEM_RATIO, -SEN_REP_RATIO, -YEAR)
+  # drop year, raw counts and not interested in senate data
+  select(FIPS, PRES_DEM_RATIO)
 
 # ------------------- CLEAN INCOME DATA --------------------------
 IncomeData201920Clean <- IncomeData %>%
@@ -140,12 +142,39 @@ PopulationData2020Clean <- PopulationData %>%
   ) %>%
   select(-BIRTHS_2020, -DEATHS_2020)
 
+# ----------------- CLEAN CENSUS DATA ------------------------
+# 2020 decennial census - race/ethnicity and sex at county level
+DemographicData2020Clean <- get_decennial(
+  geography = "county",
+  variables = c(
+    total_pop = "P1_001N",
+    white     = "P1_003N",
+    black     = "P1_004N",
+    asian     = "P1_006N",
+    hispanic  = "P2_002N",
+    male      = "P3_002N"    # no trailing comma here
+  ),
+  year = 2020,
+  sumfile = "pl"
+) %>%
+  pivot_wider(names_from = variable, values_from = value) %>%
+  mutate(
+    PctWhite    = white / total_pop * 100,
+    PctBlack    = black / total_pop * 100,
+    PctAsian    = asian / total_pop * 100,
+    PctHispanic = hispanic / total_pop * 100,
+    PctMale     = male / total_pop * 100
+  ) %>%
+  mutate(FIPS = as.character(as.numeric(GEOID))) %>%
+  select(FIPS, PctWhite, PctBlack, PctAsian, PctHispanic, PctMale)
+
 # -------------------- WRITE TO TABLE --------------------------
 write_csv(VotingData2020Clean, "./data/clean/VotingData2020.csv")
 write_csv(IncomeData201920Clean, "./data/clean/IncomeData2020.csv")
 write_csv(UnemploymentData2020Clean, "./data/clean/UnemploymentRate2020.csv")
 write_csv(EducationData201923Clean, "./data/clean/EducationData201923.csv")
 write_csv(PopulationData2020Clean, "./data/clean/PopulationData2020.csv")
+write_csv(DemographicData2020Clean, "./data/clean/DemographicData2020.csv")
 
 # ------------------- JOIN ALL TABLES --------------------------
 FinalData <- VotingData2020Clean %>%
@@ -154,25 +183,15 @@ FinalData <- VotingData2020Clean %>%
   left_join(UnemploymentData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   left_join(EducationData201923Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   left_join(PopulationData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
+  left_join(DemographicData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   select(FIPS, COUNTYNAME, everything()) %>%
   # CamelCase 
   rename(
     # Identity
     CountyName            = COUNTYNAME,
     
-    # Voting Variables
-    RegisteredVoters      = REG_VOTERS,
-    BallotsCast           = BALLOTS_CAST,
-    CitizenVotingAgePop   = CVAP,
-    RegisteredVotersPct   = REG_VOTERS_PCT,
-    VoterTurnoutPct       = VOTER_TURNOUT_PCT,
-    RegVoterTurnoutPct    = REG_VOTER_TURNOUT_PCT,
-    PresDemVotes          = PRES_DEM_VOTES,
-    PresRepVotes          = PRES_REP_VOTES,
+    # Response Variable - Voting
     PresDemRatio          = PRES_DEM_RATIO,
-    PresRepRatio          = PRES_REP_RATIO,
-    PartisanIndexDem      = PARTISAN_INDEX_DEM,
-    PartisanIndexRep      = PARTISAN_INDEX_REP,
     
     # Income / Tax Variables
     NumTaxReturns         = N1,
