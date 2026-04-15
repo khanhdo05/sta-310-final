@@ -171,7 +171,7 @@ lm_best <- lm(sq_PresDemRatio ~
 summary(lm_best)
 
 # ---------------- RESIDUAL DIAGNOSTICS ----------------
-par(mfrow = c(2,2))
+par(mfrow = c(1,1))
 plot(lm_best)
 
 # ---------------- RESIDUALS VS EACH VARIABLE ----------------
