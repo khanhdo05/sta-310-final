@@ -3,3 +3,190 @@ title: "Outliers"
 output: html_document
 ---
 
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(ggrepel)
+
+# ---------------- PREP DATA ----------------
+df_out <- FinalData %>%
+  select(-FIPS, -CountyName) %>%
+  drop_na()
+
+response <- "PresDemRatio"
+
+predictors <- setdiff(names(df_out), response)
+
+# ---------------- LOOP THROUGH VARIABLES ----------------
+par(mfrow = c(1,1))  # reset plotting
+
+for (var in predictors) {
+  
+  temp <- df_out %>%
+    select(all_of(c(response, var))) %>%
+    rename(x = all_of(var), y = all_of(response))
+  
+  # IQR outlier detection
+  Q1 <- quantile(temp$x, 0.25, na.rm = TRUE)
+  Q3 <- quantile(temp$x, 0.75, na.rm = TRUE)
+  IQR_val <- Q3 - Q1
+  
+  temp <- temp %>%
+    mutate(
+      is_outlier = x < (Q1 - 1.5 * IQR_val) | x > (Q3 + 1.5 * IQR_val)
+    )
+  
+  # ---------------- PRINT VARIABLE HEADER ----------------
+  cat("\n---------------------------------------------\n")
+  cat("Variable:", var, "\n")
+  cat("Number of outliers:", sum(temp$is_outlier), "\n")
+  
+  # ---------------- PLOT ----------------
+  p <- ggplot(temp, aes(x = x, y = y)) +
+    geom_point(alpha = 0.5, color = "gray40") +
+    
+    # Highlight outliers
+    geom_point(
+      data = temp %>% filter(is_outlier),
+      color = "red",
+      size = 2
+    ) +
+    
+    # Label extreme ones (optional but helpful)
+    geom_text_repel(
+      data = temp %>% filter(is_outlier) %>% head(5),
+      aes(label = round(x, 2)),
+      size = 3
+    ) +
+    
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    
+    labs(
+      title = paste("Outlier Detection:", var, "vs PresDemRatio"),
+      x = var,
+      y = "PresDemRatio"
+    ) +
+    theme_minimal()
+  
+  print(p)
+}
+```
+
+
+```{r}
+
+library(tidyverse)
+library(corrplot)
+library(leaps)
+library(car)
+
+# ---------------- PREP DATA ----------------
+df <- FinalData %>%
+  select(-FIPS, -CountyName) %>%
+  drop_na()
+
+cat("Sample size:", nrow(df), "\n")
+
+# ---------------- CORRELATION PLOT ----------------
+corrplot(cor(df), 
+         title = "Correlation Matrix (Final Data)", 
+         mar = c(0,0,1,0), tl.cex = 0.5)
+
+# ---------------- PAIRS PLOTS (GROUPED) ----------------
+
+# Group 1: Income / Economic
+pairs(df %>% select(PresDemRatio, TotalAgi, SalariesWages, BusinessNetIncome,
+                    CapitalGains, UnemploymentComp, SocialSecurityBenefits),
+      main = "Income Variables vs Voting",
+      pch = 16, cex = 0.3,
+      col = adjustcolor("steelblue", alpha.f = 0.4))
+
+# Group 2: Education & Demographics
+pairs(df %>% select(PresDemRatio, PctNoHs, PctHsOnly, PctSomeCollege,
+                    PctBachelors, PctWhite, PctBlack, PctHispanic),
+      main = "Education & Race vs Voting",
+      pch = 16, cex = 0.3,
+      col = adjustcolor("darkgreen", alpha.f = 0.4))
+
+# Group 3: Population & Age
+pairs(df %>% select(PresDemRatio, CensusPop2020, MedianAge, Pct18_34,
+                    Pct65Plus, AgeDependency),
+      main = "Population & Age vs Voting",
+      pch = 16, cex = 0.3,
+      col = adjustcolor("purple", alpha.f = 0.4))
+
+# Group 4: Taxes & Wealth
+pairs(df %>% select(PresDemRatio, TotalTaxLiability, MortgageInterest,
+                    CharitableContributions, EicAmount, NumEicReturns),
+      main = "Tax & Wealth vs Voting",
+      pch = 16, cex = 0.3,
+      col = adjustcolor("firebrick", alpha.f = 0.4))
+
+# ---------------- MISSING DATA ----------------
+missing_summary <- FinalData %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Missing") %>%
+  mutate(
+    Total = nrow(FinalData),
+    Pct_Missing = round(100 * Missing / Total, 1)
+  ) %>%
+  arrange(desc(Missing))
+
+print(missing_summary)
+
+# ---------------- BEST SUBSETS ----------------
+df$sq_PresDemRatio <- sqrt(df$PresDemRatio)
+
+regfit <- regsubsets(sq_PresDemRatio ~ ., data = df, nvmax = 25)
+
+plot(regfit, scale = "adjr2",
+     main = "Best Subsets (Voting Model)",
+     cex.axis = 0.6)
+
+get_best <- function(model) {
+  s <- summary(model)
+  data.frame(
+    NumVars = 1:length(s$adjr2),
+    AdjR2 = s$adjr2,
+    s$which
+  ) %>% arrange(desc(AdjR2))
+}
+
+best_models <- get_best(regfit)
+head(best_models, 10)
+
+# ---------------- FIT MODEL ----------------
+lm_best <- lm(sq_PresDemRatio ~ 
+                TotalAgi +
+                CapitalGains +
+                UnemploymentRate2020 +
+                PctBachelors +
+                PctWhite +
+                MedianAge +
+                CensusPop2020 +
+                TotalTaxLiability +
+                EicAmount,
+              data = df)
+
+summary(lm_best)
+
+# ---------------- RESIDUAL DIAGNOSTICS ----------------
+par(mfrow = c(2,2))
+plot(lm_best)
+
+# ---------------- RESIDUALS VS EACH VARIABLE ----------------
+vars <- names(df)
+vars <- vars[vars != "sq_PresDemRatio"]
+
+par(mfrow = c(1,1))
+
+for (v in vars) {
+  plot(df[[v]], lm_best$residuals,
+       xlab = v,
+       ylab = "Residuals",
+       main = paste("Residuals vs", v),
+       pch = 16, cex = 0.5)
+  abline(h = 0, col = "red", lty = 2)
+}
+```
+
