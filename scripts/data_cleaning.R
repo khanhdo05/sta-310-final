@@ -146,12 +146,12 @@ PopulationData2020Clean <- PopulationData %>%
 # 2020 decennial census - race/ethnicity and sex at county level
 decennial_vars <- c(
   total_pop   = "P1_001N",  
-  white       = "P3_002N",  # Corrected for DHC
-  black       = "P3_003N",  # Corrected for DHC
-  asian       = "P3_005N",  # Corrected for DHC
-  hispanic    = "P5_002N",  # Corrected for DHC
+  white       = "P3_002N",  
+  black       = "P3_003N",  
+  asian       = "P3_005N",  
+  hispanic    = "P5_002N",  
   male        = "P12_002N", 
-  urban_pop   = "P2_002N"   
+  urban_pop   = "P2_002N"  # total count of the population living in urban areas within a county   
 )
 
 DemographicData2020Clean <- get_decennial(
