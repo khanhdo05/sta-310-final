@@ -198,6 +198,23 @@ AgeData2020Clean <- get_acs(
   select(FIPS, MedianAge, Pct18_34, Pct65Plus, 
          AgeDependency, OldAgeDependency, ChildDependency)
 
+# ----------------- CLEAN METRO DATA ------------------------
+download.file(
+  "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/list1_2023.xlsx",
+  destfile = "./data/raw/MetroData2020.xlsx",
+  mode = "wb"
+)
+
+MetroData2020Clean <- read_xlsx("./data/raw/MetroData2020.xlsx", skip = 2) %>%
+  mutate(
+    FIPS          = as.character(as.numeric(`FIPS State Code`) * 1000 + as.numeric(`FIPS County Code`)),
+    IsMetro = case_when(
+      `Metropolitan/Micropolitan Statistical Area` == "Metropolitan Statistical Area" ~ 1L,
+      TRUE ~ 0L  # catches both NA and any other value
+    )
+  ) %>%
+  select(FIPS, IsMetro)
+
 # -------------------- WRITE TO TABLE --------------------------
 write_csv(VotingData2020Clean, "./data/clean/VotingData2020.csv")
 write_csv(IncomeData201920Clean, "./data/clean/IncomeData2020.csv")
@@ -206,6 +223,7 @@ write_csv(EducationData201923Clean, "./data/clean/EducationData201923.csv")
 write_csv(PopulationData2020Clean, "./data/clean/PopulationData2020.csv")
 write_csv(DemographicData2020Clean, "./data/clean/DemographicData2020.csv")
 write_csv(AgeData2020Clean, "./data/clean/AgeData2020.csv")
+write_csv(MetroData2020Clean, "./data/clean/MetroData2020.csv")
 
 # ------------------- JOIN ALL TABLES --------------------------
 FinalData <- VotingData2020Clean %>%
@@ -216,6 +234,7 @@ FinalData <- VotingData2020Clean %>%
   left_join(PopulationData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   left_join(DemographicData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   left_join(AgeData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
+  left_join(MetroData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   select(FIPS, COUNTYNAME, everything()) %>%
   # CamelCase 
   rename(
@@ -268,27 +287,4 @@ FinalData <- VotingData2020Clean %>%
     TRUE ~ CountyName
   ))
   
-write_csv(FinalData, "./data/clean/FINAL_DATA.csv")
-
-# Urban Data Add
-# =================== DOWNLOAD and CLEAN 2020 CBSA ===================
-download.file(
-  "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/list1_2023.xlsx",
-  destfile = "./data/raw/UrbanData2020.xlsx",
-  mode = "wb"
-)
-IsMetroCounty <- read_xlsx("./data/raw/UrbanData2020.xlsx", skip = 2) %>%
-  mutate(
-    FIPS          = as.character(as.numeric(`FIPS State Code`) * 1000 + as.numeric(`FIPS County Code`)),
-    IsMetroCounty = as.integer(`Metropolitan/Micropolitan Statistical Area` == "Metropolitan Statistical Area")
-  ) %>%
-  select(FIPS, IsMetroCounty)
-write_csv(FinalData, "./data/clean/UrbanData2020.csv")
-
-# =================== JOIN TO FINAL DATA ======================
-FinalData <- FinalData %>%
-  mutate(FIPS = as.character(FIPS)) %>%
-  left_join(IsMetroCounty %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
-  mutate(IsMetroCounty = replace_na(IsMetroCounty, 0L))
-
 write_csv(FinalData, "./data/clean/FINAL_DATA.csv")
