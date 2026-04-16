@@ -32,11 +32,36 @@ Read csv from this [link](https://raw.githubusercontent.com/khanhdo05/sta-310-fi
 
 Code book available [here](https://docs.google.com/spreadsheets/d/1A-s4d9eTGT6rGAFhPsAnOutXermwbm6LxZr9JXc_NPE/edit?gid=0#gid=0).
 
-Each row is unique by column UNITID.
+Each row is unique by column `FIPS`.
+
+# 1. Data Transformation
+
+## Response Variable: PresDemRatio
+
+```{r echo=FALSE}
+hist(df$PresDemRatio,
+     main = "Distribution of PresDemRatio",
+     col = "steelblue")
+```
+
+The data looks right-skewed, but we shouldn't use log-transformation because this variable is a proportion bounded by 0 and 1. Log-transformation is too agressive for this data and can turn a right-skewed distribution to left-skewed. A square-root transformation is milder and more appropriate. We can see this more clearly with the histograms below.
+
+```{r echo=FALSE}
+hist(log(df$PresDemRatio),
+     main = "Distribution of Log-Transformed PresDemRatio",
+     col = "steelblue")
+hist(sqrt(df$PresDemRatio),
+     main = "Distribution of Sqrt-Transformed PresDemRatio",
+     col = "steelblue")
+```
+
+The distribution of the square-root transformed one is not perfect but is definitely more bell-shape looking than that with log. Thus, we determine that our response variable needs a square-root transformation.
+
+## Exploratory Variable
 
 ```{r}
 # ---------------- PREP DATA ----------------
-df_out <- FinalData %>%
+df_out <- df %>%
   select(-FIPS, -CountyName) %>%
   drop_na()
 
@@ -108,7 +133,7 @@ library(leaps)
 library(car)
 
 # ---------------- PREP DATA ----------------
-df <- FinalData %>%
+df <- df %>%
   select(-FIPS, -CountyName) %>%
   drop_na()
 
