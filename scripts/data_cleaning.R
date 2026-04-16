@@ -271,67 +271,24 @@ FinalData <- VotingData2020Clean %>%
 write_csv(FinalData, "./data/clean/FINAL_DATA.csv")
 
 # Urban Data Add
-# =================== DOWNLOAD & CLEAN 2013 RUCC ===================
-library(tidyverse)
-library(readxl)
-download.file(
-  "https://www.ers.usda.gov/media/5769/2013-rural-urban-continuum-codes.xls",
-  destfile = "./data/raw/UrbanData2013.xls",
-  mode = "wb"
-)
-IsMetro2013 <- read_xls("./data/raw/UrbanData2013.xls", sheet = 1) %>%
-  mutate(
-    FIPS          = as.character(as.numeric(FIPS)),
-    IsMetro2013   = as.integer(RUCC_2013 <= 3)
-  ) %>%
-  select(FIPS, IsMetro2013)
-# =================== DOWNLOAD & CLEAN 2020 CBSA ===================
+# =================== DOWNLOAD and CLEAN 2020 CBSA ===================
 download.file(
   "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/list1_2023.xlsx",
   destfile = "./data/raw/UrbanData2020.xlsx",
   mode = "wb"
 )
-IsMetro2020 <- read_xlsx("./data/raw/UrbanData2020.xlsx", skip = 2) %>%
+IsMetroCounty <- read_xlsx("./data/raw/UrbanData2020.xlsx", skip = 2) %>%
   mutate(
-    FIPS        = as.character(as.numeric(`FIPS State Code`) * 1000 + as.numeric(`FIPS County Code`)),
-    IsMetro2020 = as.integer(`Metropolitan/Micropolitan Statistical Area` == "Metropolitan Statistical Area")
+    FIPS          = as.character(as.numeric(`FIPS State Code`) * 1000 + as.numeric(`FIPS County Code`)),
+    IsMetroCounty = as.integer(`Metropolitan/Micropolitan Statistical Area` == "Metropolitan Statistical Area")
   ) %>%
-  select(FIPS, IsMetro2020)
-# =================== JOIN BOTH TO FINAL DATA ======================
-FinalData <- read_csv("./data/clean/FINAL_DATA.csv") %>%
+  select(FIPS, IsMetroCounty)
+write_csv(FinalData, "./data/clean/UrbanData2020.csv")
+
+# =================== JOIN TO FINAL DATA ======================
+FinalData <- FinalData %>%
   mutate(FIPS = as.character(FIPS)) %>%
-  left_join(IsMetro2013 %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
-  left_join(IsMetro2020 %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
-  # Counties absent from the 2020 CBSA file are rural
-  mutate(IsMetro2020 = replace_na(IsMetro2020, 0L))
-write_csv(FinalData, "./data/clean/FINAL_DATA_WITH_URBAN.csv")
-# =================== AGREEMENT ANALYSIS ===========================
-agreement <- FinalData %>%
-  filter(!is.na(IsMetro2013), !is.na(IsMetro2020)) %>%
-  mutate(
-    Match = IsMetro2013 == IsMetro2020,
-    Classification = case_when(
-      IsMetro2013 == 1 &  IsMetro2020 == 1 ~ "Both Metro",
-      IsMetro2013 == 0 & IsMetro2020 == 0  ~ "Both Non-Metro",
-      IsMetro2013 == 1 & IsMetro2020 == 0  ~ "Metro in 2013 only",
-      IsMetro2013 == 0 &  IsMetro2020 == 1 ~ "Metro in 2020 only"
-    )
-  )
-pct_match <- mean(agreement$Match) * 100
-cat("====== Metro Classification Agreement ======\n")
-cat(sprintf("Overall match rate: %.1f%%\n\n", pct_match))
-cat("Breakdown:\n")
-print(
-  agreement %>%
-    count(Classification) %>%
-    mutate(Pct = round(n / sum(n) * 100, 1)) %>%
-    arrange(desc(n))
-)
-# Counties that switched — useful to inspect
-cat("\nCounties that changed classification between 2013 and 2020:\n")
-print(
-  agreement %>%
-    filter(!Match) %>%
-    select(FIPS, CountyName, IsMetro2013, IsMetro2020, Classification) %>%
-    arrange(Classification)
-)
+  left_join(IsMetroCounty %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
+  mutate(IsMetroCounty = replace_na(IsMetroCounty, 0L))
+
+write_csv(FinalData, "./data/clean/FINAL_DATA.csv")
