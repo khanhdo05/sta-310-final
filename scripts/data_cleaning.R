@@ -152,7 +152,7 @@ DemographicData2020Clean <- get_decennial(
     black     = "P1_004N",
     asian     = "P1_006N",
     hispanic  = "P2_002N",
-    male      = "P3_002N"    # no trailing comma here
+    male      = "P3_002N"
   ),
   year = 2020,
   sumfile = "pl"
@@ -168,6 +168,32 @@ DemographicData2020Clean <- get_decennial(
   mutate(FIPS = as.character(as.numeric(GEOID))) %>%
   select(FIPS, PctWhite, PctBlack, PctAsian, PctHispanic, PctMale)
 
+# 2020 acs census - age data at county level
+age_vars <- c(
+  MedianAge         = "S0101_C01_032E", # Median age (years)
+  AgeDependency     = "S0101_C01_033E", # Age dependency ratio
+  ChildDependency   = "S0101_C01_034E", # Child dependency ratio
+  OldAgeDependency  = "S0101_C01_035E", # Old-age dependency ratio
+  Pct65Plus         = "S0101_C02_030E", # Percent 65 years and over
+  # Brackets for 18-34 (20-34 + portion of 15-19)
+  Pct20_24          = "S0101_C02_006E",
+  Pct25_29          = "S0101_C02_007E",
+  Pct30_34          = "S0101_C02_008E"
+)
+
+AgeData2020Clean <- get_acs(
+  geography = "county",
+  variables = age_vars,
+  year = 2020,
+  survey = "acs5",
+  output = "wide"
+) %>%
+  # Sum the brackets to create a proxy for the 18-34 age group
+  mutate(Pct18_34 = Pct20_24 + Pct25_29 + Pct30_34) %>%
+  mutate(FIPS = as.character(as.numeric(GEOID))) %>%
+  select(FIPS, MedianAge, Pct18_34, Pct65Plus, 
+         AgeDependency, OldAgeDependency, ChildDependency)
+
 # -------------------- WRITE TO TABLE --------------------------
 write_csv(VotingData2020Clean, "./data/clean/VotingData2020.csv")
 write_csv(IncomeData201920Clean, "./data/clean/IncomeData2020.csv")
@@ -175,6 +201,7 @@ write_csv(UnemploymentData2020Clean, "./data/clean/UnemploymentRate2020.csv")
 write_csv(EducationData201923Clean, "./data/clean/EducationData201923.csv")
 write_csv(PopulationData2020Clean, "./data/clean/PopulationData2020.csv")
 write_csv(DemographicData2020Clean, "./data/clean/DemographicData2020.csv")
+write_csv(AgeData2020Clean, "./data/clean/AgeData2020.csv")
 
 # ------------------- JOIN ALL TABLES --------------------------
 FinalData <- VotingData2020Clean %>%
@@ -184,6 +211,7 @@ FinalData <- VotingData2020Clean %>%
   left_join(EducationData201923Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   left_join(PopulationData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   left_join(DemographicData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
+  left_join(AgeData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   select(FIPS, COUNTYNAME, everything()) %>%
   # CamelCase 
   rename(
