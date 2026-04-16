@@ -298,6 +298,12 @@ FinalData <- VotingData2020Clean %>%
   mutate(CountyName = case_when(
     FIPS == "15005" ~ "Kalawao County",
     TRUE ~ CountyName
-  ))
+  )) %>%
+  
+  # calculate proportions
+  mutate(
+    PropSalaries = SalariesWages / TotalAgi,
+    AvgWage = SalariesWages / NumTaxReturns
+  )
   
 write_csv(FinalData, "./data/clean/FINAL_DATA.csv")
