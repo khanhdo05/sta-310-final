@@ -170,7 +170,7 @@ DemographicData2020Clean <- get_decennial(
     PctUrban    = urban_pop / total_pop * 100
   ) %>%
   mutate(FIPS = as.character(as.numeric(GEOID))) %>%
-  select(FIPS, PctWhite, PctBlack, PctAsian, PctHispanic, PctMale)
+  select(FIPS, PctWhite, PctBlack, PctAsian, PctHispanic, PctMale, PctUrban)
 
 # 2020 acs census - age data at county level
 age_vars <- c(

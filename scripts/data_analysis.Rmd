@@ -175,11 +175,11 @@ pairs(df %>% select(PresDemRatio, TotalTaxLiability, MortgageInterest,
       col = adjustcolor("firebrick", alpha.f = 0.4))
 
 # ---------------- MISSING DATA ----------------
-missing_summary <- FinalData %>%
+missing_summary <- df %>%
   summarise(across(everything(), ~ sum(is.na(.)))) %>%
   pivot_longer(everything(), names_to = "Variable", values_to = "Missing") %>%
   mutate(
-    Total = nrow(FinalData),
+    Total = nrow(df),
     Pct_Missing = round(100 * Missing / Total, 1)
   ) %>%
   arrange(desc(Missing))
