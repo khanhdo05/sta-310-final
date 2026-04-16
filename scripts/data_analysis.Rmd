@@ -1,13 +1,40 @@
 ---
-title: "Outliers"
-output: html_document
+title: "An Extra Sum of Stress: Does Economic Distress Predict Democratic Support Beyond General Prosperity and Demographic Composition?"
+author: "Khanh Do, Maral Bat-Erdene"
+date: "`r Sys.Date()`"
+output: pdf_document
+urlcolor: blue
 ---
 
-```{r}
-library(tidyverse)
-library(ggplot2)
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
 library(ggrepel)
+library(readr)
+library(tidyverse)
+library(corrplot)
+require(leaps)
+library(patchwork)
+require(mosaic)
+require(corrplot)
+require(leaps)
+library(ggplot2)
+library(reshape2)
+```
 
+# Read in Data
+
+```{r message = FALSE, warning = FALSE, echo = FALSE}
+url <- "https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/clean/FINAL_DATA.csv"
+df <- read_csv(url, show_col_types = FALSE)
+```
+
+Read csv from this [link](https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/clean/FINAL_DATA.csv) into a dataframe `df`.
+
+Code book available [here](https://docs.google.com/spreadsheets/d/1A-s4d9eTGT6rGAFhPsAnOutXermwbm6LxZr9JXc_NPE/edit?gid=0#gid=0).
+
+Each row is unique by column UNITID.
+
+```{r}
 # ---------------- PREP DATA ----------------
 df_out <- FinalData %>%
   select(-FIPS, -CountyName) %>%

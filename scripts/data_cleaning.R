@@ -144,18 +144,21 @@ PopulationData2020Clean <- PopulationData %>%
 
 # ----------------- CLEAN CENSUS DATA ------------------------
 # 2020 decennial census - race/ethnicity and sex at county level
+decennial_vars <- c(
+  total_pop   = "P1_001N",  
+  white       = "P3_002N",  # Corrected for DHC
+  black       = "P3_003N",  # Corrected for DHC
+  asian       = "P3_005N",  # Corrected for DHC
+  hispanic    = "P5_002N",  # Corrected for DHC
+  male        = "P12_002N", 
+  urban_pop   = "P2_002N"   
+)
+
 DemographicData2020Clean <- get_decennial(
   geography = "county",
-  variables = c(
-    total_pop = "P1_001N",
-    white     = "P1_003N",
-    black     = "P1_004N",
-    asian     = "P1_006N",
-    hispanic  = "P2_002N",
-    male      = "P3_002N"
-  ),
+  variables = decennial_vars,
   year = 2020,
-  sumfile = "pl"
+  sumfile = "dhc"
 ) %>%
   pivot_wider(names_from = variable, values_from = value) %>%
   mutate(
@@ -163,7 +166,8 @@ DemographicData2020Clean <- get_decennial(
     PctBlack    = black / total_pop * 100,
     PctAsian    = asian / total_pop * 100,
     PctHispanic = hispanic / total_pop * 100,
-    PctMale     = male / total_pop * 100
+    PctMale     = male / total_pop * 100,
+    PctUrban    = urban_pop / total_pop * 100
   ) %>%
   mutate(FIPS = as.character(as.numeric(GEOID))) %>%
   select(FIPS, PctWhite, PctBlack, PctAsian, PctHispanic, PctMale)
