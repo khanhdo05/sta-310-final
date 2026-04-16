@@ -1,6 +1,7 @@
 library(readr)
 library(tidyverse)
 library(tidycensus)
+library(readxl)
 
 # -------------------- READ IN DATA ------------------------------
 VotingData <- read_csv("https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/raw/38506-0001-Data.csv", show_col_types = FALSE)
@@ -205,13 +206,12 @@ download.file(
   mode = "wb"
 )
 
-MetroData2020Clean <- read_xlsx("./data/raw/MetroData2020.xlsx", skip = 2) %>%
+MetroData2020 <- read_excel("./data/raw/MetroData2020.xlsx", skip = 2)
+
+MetroData2020Clean <- MetroData2020 %>%
   mutate(
     FIPS          = as.character(as.numeric(`FIPS State Code`) * 1000 + as.numeric(`FIPS County Code`)),
-    IsMetro = case_when(
-      `Metropolitan/Micropolitan Statistical Area` == "Metropolitan Statistical Area" ~ 1L,
-      TRUE ~ 0L  # catches both NA and any other value
-    )
+    IsMetro = as.integer(`Metropolitan/Micropolitan Statistical Area` == "Metropolitan Statistical Area")
   ) %>%
   select(FIPS, IsMetro)
 
@@ -235,6 +235,7 @@ FinalData <- VotingData2020Clean %>%
   left_join(DemographicData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   left_join(AgeData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
   left_join(MetroData2020Clean %>% mutate(FIPS = as.character(FIPS)), by = "FIPS") %>%
+  mutate(IsMetro = replace_na(IsMetro, 0L)) %>%
   select(FIPS, COUNTYNAME, everything()) %>%
   # CamelCase 
   rename(
