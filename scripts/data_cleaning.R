@@ -1,7 +1,8 @@
 library(readr)
 library(tidyverse)
 library(tidycensus)
-library(readxl)
+library(tigris)
+library(sf)
 
 # -------------------- READ IN DATA ------------------------------
 VotingData <- read_csv("https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/raw/38506-0001-Data.csv", show_col_types = FALSE)
@@ -200,20 +201,31 @@ AgeData2020Clean <- get_acs(
          AgeDependency, OldAgeDependency, ChildDependency)
 
 # ----------------- CLEAN METRO DATA ------------------------
-download.file(
-  "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/list1_2023.xlsx",
-  destfile = "./data/raw/MetroData2020.xlsx",
-  mode = "wb"
-)
+# Retrieve all US counties from the Census TIGER API
+# Use 'cb = TRUE' for the generalized (smaller) map files.
+all_counties <- counties(year = 2020, cb = TRUE) %>% 
+  st_as_sf()
 
-MetroData2020 <- read_excel("./data/raw/MetroData2020.xlsx", skip = 2)
+# Retrieve the CBSA (Metro/Micro) relationship data
+# Identifies which counties are part of a Core Based Statistical Area.
+msa_lookup <- core_based_statistical_areas(year = 2020, cb = TRUE) %>%
+  st_as_sf() %>%
+  # Filter specifically for 'Metropolitan'
+  filter(str_detect(NAMELSAD, "Metropolitan"))
 
-MetroData2020Clean <- MetroData2020 %>%
-  mutate(
-    FIPS          = as.character(as.numeric(`FIPS State Code`) * 1000 + as.numeric(`FIPS County Code`)),
-    IsMetro = as.integer(`Metropolitan/Micropolitan Statistical Area` == "Metropolitan Statistical Area")
-  ) %>%
-  select(FIPS, IsMetro)
+# Create the IsMetroCounty Flag
+# If a county belongs to an MSA (Metropolitan Statistical Area), it's 1. 
+# Micropolitan areas or non-CBSA counties are 0.
+MetroData2020Clean <- st_join(all_counties, msa_lookup, join = st_intersects) %>%
+  # Counties that match a metropolitan area will receive the data from the metro table
+  # Counties that do not match will have a NA (missing value) in the GEOID.y column because 
+  # they were not found in the metropolitan dataset.
+  mutate(IsMetro = if_else(!is.na(GEOID.y), 1, 0)) %>%
+  # Clean up and select the FIPS and the flag
+  mutate(FIPS = as.character(as.numeric(GEOID.x))) %>%
+  select(FIPS, IsMetro) %>%
+  st_drop_geometry() %>%
+  as_tibble()
 
 # -------------------- WRITE TO TABLE --------------------------
 write_csv(VotingData2020Clean, "./data/clean/VotingData2020.csv")
