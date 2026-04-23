@@ -59,78 +59,88 @@ The distribution of the square-root transformed one is not perfect but is defini
 
 ## Exploratory Variable
 
+### Check for Missing Data
+
 ```{r}
-# ---------------- PREP DATA ----------------
+# ---------------- MISSING DATA ----------------
+missing_summary <- df %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Missing") %>%
+  mutate(
+    Total = nrow(df),
+    Pct_Missing = round(100 * Missing / Total, 1)
+  ) %>%
+  arrange(desc(Missing))
+
+print(missing_summary)
+```
+
+None of our variables have more than 0.5% of missing data so we do not have to exclude any variables.
+
+### Outliers
+
+```{r echo=FALSE}
+# Prep data
 df_out <- df %>%
   select(-FIPS, -CountyName) %>%
   drop_na()
+
 response   <- "PresDemRatio"
 predictors <- setdiff(names(df_out), response)
 
-# ---------------- OUTLIER DETECTION METHOD: COOK'S DISTANCE ----------------
-# ---------------- LOOP THROUGH VARIABLES ----------------
-par(mfrow = c(1,1))
+# Create a list to store plots
+plot_list <- list()
+
+# Outlier detection loop
 for (var in predictors) {
   
   temp <- df_out %>%
     select(all_of(c(response, var))) %>%
-    rename(x = all_of(var), y = all_of(response)) %>%
-    drop_na()
+    rename(x = all_of(var), y = all_of(response))
   
   n <- nrow(temp)
-  
-  # Cook's Distance outlier detection
   model   <- lm(y ~ x, data = temp)
   cooks_d <- cooks.distance(model)
   cutoff  <- 4 / n
   
   temp <- temp %>%
-    mutate(
-      cooks_d    = cooks_d,
-      is_outlier = cooks_d > cutoff
-    )
+    mutate(cooks_d = cooks_d, is_outlier = cooks_d > cutoff)
   
-  # ---------------- PRINT VARIABLE HEADER ----------------
-  cat("\n---------------------------------------------\n")
-  cat("Variable:", var, "\n")
-  cat("Number of influential points (Cook's D > 4/n):", sum(temp$is_outlier), "\n")
-  
-  # ---------------- PLOT ----------------
+  # Create the ggplot and save it to the list
   p <- ggplot(temp, aes(x = x, y = y)) +
-    geom_point(alpha = 0.5, color = "gray40") +
-    
-    # Highlight influential points
-    geom_point(
-      data = temp %>% filter(is_outlier),
-      color = "red",
-      size = 2
-    ) +
-    
-    # Label the most influential ones
-    geom_text_repel(
-      data = temp %>% filter(is_outlier) %>% slice_max(cooks_d, n = 5),
-      aes(label = round(x, 2)),
-      size = 3
-    ) +
-    
+    geom_point(aes(color = is_outlier), alpha = 0.4) +
+    scale_color_manual(values = c("gray60", "red")) +
     geom_smooth(method = "lm", se = FALSE, color = "blue") +
-    
     labs(
-      title    = paste("Influential Point Detection:", var, "vs PresDemRatio"),
-      subtitle = paste0("Cook's D threshold: 4/n = ", round(cutoff, 4),
-                        "  |  Influential points: ", sum(temp$is_outlier)),
-      x = var,
-      y = "PresDemRatio"
+      title = paste(var),
+      subtitle = paste("Outliers:", sum(temp$is_outlier)),
+      x = NULL, y = NULL
     ) +
-    theme_minimal()
+    theme_minimal(base_size = 8) +
+    theme(legend.position = "none")
   
-  print(p)
+  plot_list[[var]] <- p
 }
+
+# Display plots
+wrap_plots(plot_list[1:9], ncol = 3, nrow = 3) +
+  plot_annotation(title = "Outlier Detection 1")
+wrap_plots(plot_list[10:18], ncol = 3, nrow = 3) +
+  plot_annotation(title = "Outlier Detection 2")
+wrap_plots(plot_list[19:27], ncol = 3, nrow = 3) +
+  plot_annotation(title = "Outlier Detection 3")
+wrap_plots(plot_list[28:36], ncol = 3, nrow = 3) +
+  plot_annotation(title = "Outlier Detection 4")
+wrap_plots(plot_list[37:39], ncol = 1, nrow = 3) +
+  plot_annotation(title = "Outlier Detection 5")
 ```
 
-Cook's Distance (Cook, 1977) is used here as the primary outlier detection method because it measures the influence of each observation on the fitted regression coefficients which is directly relevant to our goal of building a regression model. Unlike distributional methods such as IQR or Z-score outlier detection, which only flagged observations based on a single variable's distribution, Cook's D identifies observations whose removal would substantially change the estimated relationship between a predictor and the response variable (Belsley, Kuh & Welsch, 1980). The standard threshold of 4/n (Cook & Weisberg, 1982) is applied, where n is the number of complete observations for each predictor-response pair.
+Cook's Distance (Cook, 1977) is used here as the primary outlier detection method because it measures the influence of each observation on the fitted regression coefficients which is directly relevant to our goal of building a regression model. Unlike distributional methods such as IQR or Z-score outlier detection, which only flagged observations based on a single variable's distribution, Cook's D identifies observations whose removal would substantially change the estimated relationship between a predictor and the response variable (Belsley, Kuh & Welsch, 1980). The standard threshold of 4/n (Cook & Weisberg, 1982) is applied, where n is the number of complete observations for each predictor-response pair. Although the outliers are identified, we don't remove them without good reasons.
 
-```{r}
+### Correlation Plots
+
+
+```{r echo=FALSE}
 # ---------------- CORRELATION PLOT ----------------
 # Remove categorical/binary variables before computing correlation
 df_corr <- df_out %>%
@@ -145,11 +155,11 @@ corrplot(cor(df_corr),
 The correlation matrix shows that all income and tax dollar-amount variables (NumTaxReturns through ChildTaxCredit) form a near-perfectly correlated block, the age variables (MedianAge, Pct65Plus, OldAgeDependency, ChildDependency) cluster together, and the education variables (PctNoHs through PctBachelors) seems a little intercorrelated. Since our goal is purely predictive rather than inferential, we will not address multicollinearity and instead allow the best subsets selection procedure to identify the combination of variables that best predicts PresDemRatio.
 
 
-```{r}
+```{r echo=FALSE}
 # ---------------- PAIRS PLOTS (GROUPED) ----------------
 
 # Group 1: Income / Economic
-pairs(df_out %>% select(PresDemRatio, TotalAgi, SalariesWages, BusinessNetIncome,
+pairs(df_out %>% select(PresDemRatio, TotalAgi, SalariesWages, PropSalaries, AvgWage, BusinessNetIncome,
                     CapitalGains, UnemploymentComp, SocialSecurityBenefits),
       main = "Income Variables vs Voting",
       pch = 16, cex = 0.3,
@@ -193,22 +203,8 @@ Tax & Wealth vs Voting:
 
 L-shaped compression also show in TotalTaxLiability, MortgageInterest, CharitableContributions, EicAmount, and NumEicReturns, and thus all need log-transformation. Also, EicAmount and NumEicReturns looks correlated with each other.
 
-```{r}
-# ---------------- MISSING DATA ----------------
-missing_summary <- df %>%
-  summarise(across(everything(), ~ sum(is.na(.)))) %>%
-  pivot_longer(everything(), names_to = "Variable", values_to = "Missing") %>%
-  mutate(
-    Total = nrow(df),
-    Pct_Missing = round(100 * Missing / Total, 1)
-  ) %>%
-  arrange(desc(Missing))
 
-print(missing_summary)
-```
-
-
-```{r}
+```{r echo=FALSE}
 # ---------------- PREP FOR BEST SUBSETS ----------------
 df$sq_PresDemRatio <- sqrt(df$PresDemRatio)
 
@@ -264,6 +260,9 @@ df_model <- df_best %>%
     log_CapitalGains, log_UnemploymentComp, log_SocialSecurityBenefits,
     log_TotalTaxLiability, log_MortgageInterest,
     log_CharitableContributions, log_EicAmount, log_CensusPop2020,
+    
+    # Other income
+    PropSalaries, AvgWage,
     
     # Education (PctNoHs dropped as reference)
     PctHsOnly, PctSomeCollege, PctBachelors,
@@ -344,19 +343,17 @@ lm_best <- lm(best_formula, data = df_model)
 summary(lm_best)
 
 # ---------------- RESIDUAL DIAGNOSTICS ----------------
-par(mfrow = c(1, 1))
 plot(lm_best)
-par(mfrow = c(1, 1))
 
-# ---------------- RESIDUALS VS EACH PREDICTOR ----------------
-for (v in vars_best) {
-  plot(df_model[[v]], lm_best$residuals,
-       xlab = v,
-       ylab = "Residuals",
-       main = paste("Residuals vs", v),
-       pch  = 16, cex = 0.5,
-       col  = adjustcolor("steelblue", alpha.f = 0.5))
-  abline(h = 0, col = "red", lty = 2)
-}
+# # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
+# for (v in vars_best) {
+#   plot(df_model[[v]], lm_best$residuals,
+#        xlab = v,
+#        ylab = "Residuals",
+#        main = paste("Residuals vs", v),
+#        pch  = 16, cex = 0.5,
+#        col  = adjustcolor("steelblue", alpha.f = 0.5))
+#   abline(h = 0, col = "red", lty = 2)
+# }
 ```
 
