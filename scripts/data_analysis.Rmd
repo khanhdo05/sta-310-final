@@ -265,10 +265,10 @@ df_model <- df_best %>%
     log_TotalTaxLiability, log_MortgageInterest,
     log_CharitableContributions, log_EicAmount, log_CensusPop2020,
     
-    # Education
+    # Education (PctNoHs dropped as reference)
     PctHsOnly, PctSomeCollege, PctBachelors,
     
-    # Race
+    # Race (PctWhite dropped as reference)
     PctBlack, PctAsian, PctHispanic,
     
     # Demographics
@@ -278,16 +278,22 @@ df_model <- df_best %>%
     MedianAge, Pct18_34, Pct65Plus,
     AgeDependency, OldAgeDependency, ChildDependency,
     
-    # Other
+    # Other (NO duplicates)
     UnemploymentRate2020, NetMigration2020,
     BirthRate2020, DeathRate2020,
     AvgWage, PropSalaries,
     NumTaxReturns, PartnershipIncome,
-    NumEicReturns, ChildTaxCredit,
-    PctNoHs, PctWhite, PctMale,
-    NetMigration2020, DeathRate2020
+    NumEicReturns, ChildTaxCredit
+    
+    # REMOVED: PctNoHs, PctWhite (said dropped), PctMale (duplicate),
+    #          NetMigration2020 (duplicate), DeathRate2020 (duplicate)
   ) %>%
   drop_na()
+
+# Sanity check BEFORE running best subsets
+cat("Response variable range:\n")
+print(summary(df_model$sq_PresDemRatio))
+# Should be ~0.2 to 0.9 (square roots of proportions), NOT 0 to 1
 
 cat("Variables in model data:", ncol(df_model) - 1, "\n")
 cat("Sample size:", nrow(df_model), "\n")
@@ -338,7 +344,7 @@ lm_best <- lm(best_formula, data = df_model)
 summary(lm_best)
 
 # ---------------- RESIDUAL DIAGNOSTICS ----------------
-par(mfrow = c(2, 2))
+par(mfrow = c(1, 1))
 plot(lm_best)
 par(mfrow = c(1, 1))
 
