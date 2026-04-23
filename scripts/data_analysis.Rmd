@@ -131,7 +131,6 @@ for (var in predictors) {
 Cook's Distance (Cook, 1977) is used here as the primary outlier detection method because it measures the influence of each observation on the fitted regression coefficients which is directly relevant to our goal of building a regression model. Unlike distributional methods such as IQR or Z-score outlier detection, which only flagged observations based on a single variable's distribution, Cook's D identifies observations whose removal would substantially change the estimated relationship between a predictor and the response variable (Belsley, Kuh & Welsch, 1980). The standard threshold of 4/n (Cook & Weisberg, 1982) is applied, where n is the number of complete observations for each predictor-response pair.
 
 ```{r}
-
 library(tidyverse)
 library(corrplot)
 library(leaps)
@@ -143,12 +142,25 @@ df <- df %>%
   drop_na()
 
 cat("Sample size:", nrow(df), "\n")
+```
 
+
+```{r}
 # ---------------- CORRELATION PLOT ----------------
-corrplot(cor(df), 
+# Remove categorical/binary variables before computing correlation
+df_corr <- df %>%
+  select(-IsMetro, -PresDemRatio) %>%
+  select(where(is.numeric))
+
+corrplot(cor(df_corr),
          title = "Correlation Matrix (Final Data)", 
          mar = c(0,0,1,0), tl.cex = 0.5)
+```
 
+The correlation matrix shows that all income and tax dollar-amount variables (NumTaxReturns through ChildTaxCredit) form a near-perfectly correlated block, the age variables (MedianAge, Pct65Plus, OldAgeDependency, ChildDependency) cluster together, and the education variables (PctNoHs through PctBachelors) seems a little intercorrelated. Since our goal is purely predictive rather than inferential, we will not address multicollinearity and instead allow the best subsets selection procedure to identify the combination of variables that best predicts PresDemRatio.
+
+
+```{r}
 # ---------------- PAIRS PLOTS (GROUPED) ----------------
 
 # Group 1: Income / Economic
@@ -178,7 +190,10 @@ pairs(df %>% select(PresDemRatio, TotalTaxLiability, MortgageInterest,
       main = "Tax & Wealth vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("firebrick", alpha.f = 0.4))
+```
 
+
+```{r}
 # ---------------- MISSING DATA ----------------
 missing_summary <- df %>%
   summarise(across(everything(), ~ sum(is.na(.)))) %>%
