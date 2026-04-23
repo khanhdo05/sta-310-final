@@ -44,7 +44,7 @@ hist(df$PresDemRatio,
      col = "steelblue")
 ```
 
-The data looks right-skewed, but we shouldn't use log-transformation because this variable is a proportion bounded by 0 and 1. Log-transformation is too agressive for this data and can turn a right-skewed distribution to left-skewed. A square-root transformation is milder and more appropriate. We can see this more clearly with the histograms below.
+The data looks right-skewed, but we shouldn't use log-transformation because this variable is a proportion bounded by 0 and 1. Log-transformation is too aggressive for this data and can turn a right-skewed distribution to left-skewed. A square-root transformation is milder and more appropriate. We can see this more clearly with the histograms below.
 
 ```{r echo=FALSE}
 hist(log(df$PresDemRatio),
@@ -64,49 +64,51 @@ The distribution of the square-root transformed one is not perfect but is defini
 df_out <- df %>%
   select(-FIPS, -CountyName) %>%
   drop_na()
-
-response <- "PresDemRatio"
-
+response   <- "PresDemRatio"
 predictors <- setdiff(names(df_out), response)
 
+# ---------------- OUTLIER DETECTION METHOD: COOK'S DISTANCE ----------------
 # ---------------- LOOP THROUGH VARIABLES ----------------
-par(mfrow = c(1,1))  # reset plotting
-
+par(mfrow = c(1,1))
 for (var in predictors) {
   
   temp <- df_out %>%
     select(all_of(c(response, var))) %>%
-    rename(x = all_of(var), y = all_of(response))
+    rename(x = all_of(var), y = all_of(response)) %>%
+    drop_na()
   
-  # IQR outlier detection
-  Q1 <- quantile(temp$x, 0.25, na.rm = TRUE)
-  Q3 <- quantile(temp$x, 0.75, na.rm = TRUE)
-  IQR_val <- Q3 - Q1
+  n <- nrow(temp)
+  
+  # Cook's Distance outlier detection
+  model   <- lm(y ~ x, data = temp)
+  cooks_d <- cooks.distance(model)
+  cutoff  <- 4 / n
   
   temp <- temp %>%
     mutate(
-      is_outlier = x < (Q1 - 1.5 * IQR_val) | x > (Q3 + 1.5 * IQR_val)
+      cooks_d    = cooks_d,
+      is_outlier = cooks_d > cutoff
     )
   
   # ---------------- PRINT VARIABLE HEADER ----------------
   cat("\n---------------------------------------------\n")
   cat("Variable:", var, "\n")
-  cat("Number of outliers:", sum(temp$is_outlier), "\n")
+  cat("Number of influential points (Cook's D > 4/n):", sum(temp$is_outlier), "\n")
   
   # ---------------- PLOT ----------------
   p <- ggplot(temp, aes(x = x, y = y)) +
     geom_point(alpha = 0.5, color = "gray40") +
     
-    # Highlight outliers
+    # Highlight influential points
     geom_point(
       data = temp %>% filter(is_outlier),
       color = "red",
       size = 2
     ) +
     
-    # Label extreme ones (optional but helpful)
+    # Label the most influential ones
     geom_text_repel(
-      data = temp %>% filter(is_outlier) %>% head(5),
+      data = temp %>% filter(is_outlier) %>% slice_max(cooks_d, n = 5),
       aes(label = round(x, 2)),
       size = 3
     ) +
@@ -114,7 +116,9 @@ for (var in predictors) {
     geom_smooth(method = "lm", se = FALSE, color = "blue") +
     
     labs(
-      title = paste("Outlier Detection:", var, "vs PresDemRatio"),
+      title    = paste("Influential Point Detection:", var, "vs PresDemRatio"),
+      subtitle = paste0("Cook's D threshold: 4/n = ", round(cutoff, 4),
+                        "  |  Influential points: ", sum(temp$is_outlier)),
       x = var,
       y = "PresDemRatio"
     ) +
@@ -124,6 +128,7 @@ for (var in predictors) {
 }
 ```
 
+Cook's Distance (Cook, 1977) is used here as the primary outlier detection method because it measures the influence of each observation on the fitted regression coefficients which is directly relevant to our goal of building a regression model. Unlike distributional methods such as IQR or Z-score outlier detection, which only flagged observations based on a single variable's distribution, Cook's D identifies observations whose removal would substantially change the estimated relationship between a predictor and the response variable (Belsley, Kuh & Welsch, 1980). The standard threshold of 4/n (Cook & Weisberg, 1982) is applied, where n is the number of complete observations for each predictor-response pair.
 
 ```{r}
 
