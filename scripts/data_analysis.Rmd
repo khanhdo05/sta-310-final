@@ -205,59 +205,151 @@ missing_summary <- df %>%
   arrange(desc(Missing))
 
 print(missing_summary)
+```
 
-# ---------------- BEST SUBSETS ----------------
+
+```{r}
+# ---------------- PREP FOR BEST SUBSETS ----------------
 df$sq_PresDemRatio <- sqrt(df$PresDemRatio)
 
-regfit <- regsubsets(sq_PresDemRatio ~ ., data = df, nvmax = 25)
+# ---------------- TRANSFORMATIONS ----------------
+df_best <- df %>%
+  mutate(
+    # Log-transform the financial variables
+    log_TotalAgi                = log(TotalAgi + 1),
+    log_SalariesWages           = log(SalariesWages + 1),
+    log_BusinessNetIncome       = log(BusinessNetIncome + 1),
+    log_CapitalGains            = log(CapitalGains + 1),
+    log_UnemploymentComp        = log(UnemploymentComp + 1),
+    log_SocialSecurityBenefits  = log(SocialSecurityBenefits + 1),
+    log_TotalTaxLiability       = log(TotalTaxLiability + 1),
+    log_MortgageInterest        = log(MortgageInterest + 1),
+    log_CharitableContributions = log(CharitableContributions + 1),
+    log_EicAmount               = log(EicAmount + 1),
+    log_CensusPop2020           = log(CensusPop2020 + 1)
+  ) %>%
+  # Drop original untransformed versions only, keep everything else
+  select(
+    -TotalAgi, -SalariesWages, -BusinessNetIncome, -CapitalGains,
+    -UnemploymentComp, -SocialSecurityBenefits, -TotalTaxLiability,
+    -MortgageInterest, -CharitableContributions, -EicAmount, -CensusPop2020,
+    -PresDemRatio
+  )
 
+# ---------------- VERIFY TRANSFORMATIONS ----------------
+par(mfrow = c(3, 4))
+log_vars <- c("log_TotalAgi", "log_SalariesWages", "log_BusinessNetIncome",
+              "log_CapitalGains", "log_UnemploymentComp", "log_SocialSecurityBenefits",
+              "log_TotalTaxLiability", "log_MortgageInterest",
+              "log_CharitableContributions", "log_EicAmount", "log_CensusPop2020")
+
+for (v in log_vars) {
+  hist(df_best[[v]],
+       main = v, xlab = "", col = "steelblue", cex.main = 0.8)
+}
+par(mfrow = c(1, 1))
+
+cat("Remaining variables:", ncol(df_best), "\n")
+cat("Sample size:", nrow(df_best), "\n")
+print(names(df_best))
+
+# Drop one category from each compositional group to remove linear dependencies
+# Education: drop PctNoHs (reference), Race: drop PctWhite (reference)
+df_model <- df_best %>%
+  select(
+    sq_PresDemRatio,
+    
+    # Income (log-transformed)
+    log_TotalAgi, log_SalariesWages, log_BusinessNetIncome,
+    log_CapitalGains, log_UnemploymentComp, log_SocialSecurityBenefits,
+    log_TotalTaxLiability, log_MortgageInterest,
+    log_CharitableContributions, log_EicAmount, log_CensusPop2020,
+    
+    # Education
+    PctHsOnly, PctSomeCollege, PctBachelors,
+    
+    # Race
+    PctBlack, PctAsian, PctHispanic,
+    
+    # Demographics
+    PctMale, PctUrban, IsMetro,
+    
+    # Age
+    MedianAge, Pct18_34, Pct65Plus,
+    AgeDependency, OldAgeDependency, ChildDependency,
+    
+    # Other
+    UnemploymentRate2020, NetMigration2020,
+    BirthRate2020, DeathRate2020,
+    AvgWage, PropSalaries,
+    NumTaxReturns, PartnershipIncome,
+    NumEicReturns, ChildTaxCredit,
+    PctNoHs, PctWhite, PctMale,
+    NetMigration2020, DeathRate2020
+  ) %>%
+  drop_na()
+
+cat("Variables in model data:", ncol(df_model) - 1, "\n")
+cat("Sample size:", nrow(df_model), "\n")
+
+# ---------------- BEST SUBSETS ----------------
+regfit <- regsubsets(
+  sq_PresDemRatio ~ .,
+  data    = df_model,
+  nvmax   = 20,
+  method  = "seqrep"
+)
+
+# Plot
 plot(regfit, scale = "adjr2",
-     main = "Best Subsets (Voting Model)",
-     cex.axis = 0.6)
+     main = "Best Subsets",
+     cex.axis = 0.55)
 
+# Summary table
 get_best <- function(model) {
   s <- summary(model)
   data.frame(
     NumVars = 1:length(s$adjr2),
-    AdjR2 = s$adjr2,
-    s$which
+    AdjR2   = round(s$adjr2, 4)
   ) %>% arrange(desc(AdjR2))
 }
 
 best_models <- get_best(regfit)
 head(best_models, 10)
 
-# ---------------- FIT MODEL ----------------
-lm_best <- lm(sq_PresDemRatio ~ 
-                TotalAgi +
-                CapitalGains +
-                UnemploymentRate2020 +
-                PctBachelors +
-                PctWhite +
-                MedianAge +
-                CensusPop2020 +
-                TotalTaxLiability +
-                EicAmount,
-              data = df)
+s <- summary(regfit)
+cat("\nBest model by Adjusted R2:", which.max(s$adjr2), "variables\n")
 
+plot(s$adjr2, type = "b", xlab = "# Variables", ylab = "Adj R2", main = "Adjusted R2")
+points(which.max(s$adjr2), max(s$adjr2), col = "red", pch = 16, cex = 1.5)
+
+# ---------------- FIT BEST MODEL ----------------
+best_n    <- which.max(s$adjr2)
+coef_best <- coef(regfit, best_n)
+vars_best <- names(coef_best)[-1]
+cat("\nVariables in best model (Adj R2):\n")
+print(vars_best)
+
+best_formula <- as.formula(
+  paste("sq_PresDemRatio ~", paste(vars_best, collapse = " + "))
+)
+
+lm_best <- lm(best_formula, data = df_model)
 summary(lm_best)
 
 # ---------------- RESIDUAL DIAGNOSTICS ----------------
-par(mfrow = c(1,1))
+par(mfrow = c(2, 2))
 plot(lm_best)
+par(mfrow = c(1, 1))
 
-# ---------------- RESIDUALS VS EACH VARIABLE ----------------
-vars <- names(df)
-vars <- vars[vars != "sq_PresDemRatio"]
-
-par(mfrow = c(1,1))
-
-for (v in vars) {
-  plot(df[[v]], lm_best$residuals,
+# ---------------- RESIDUALS VS EACH PREDICTOR ----------------
+for (v in vars_best) {
+  plot(df_model[[v]], lm_best$residuals,
        xlab = v,
        ylab = "Residuals",
        main = paste("Residuals vs", v),
-       pch = 16, cex = 0.5)
+       pch  = 16, cex = 0.5,
+       col  = adjustcolor("steelblue", alpha.f = 0.5))
   abline(h = 0, col = "red", lty = 2)
 }
 ```
