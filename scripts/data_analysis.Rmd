@@ -131,24 +131,9 @@ for (var in predictors) {
 Cook's Distance (Cook, 1977) is used here as the primary outlier detection method because it measures the influence of each observation on the fitted regression coefficients which is directly relevant to our goal of building a regression model. Unlike distributional methods such as IQR or Z-score outlier detection, which only flagged observations based on a single variable's distribution, Cook's D identifies observations whose removal would substantially change the estimated relationship between a predictor and the response variable (Belsley, Kuh & Welsch, 1980). The standard threshold of 4/n (Cook & Weisberg, 1982) is applied, where n is the number of complete observations for each predictor-response pair.
 
 ```{r}
-library(tidyverse)
-library(corrplot)
-library(leaps)
-library(car)
-
-# ---------------- PREP DATA ----------------
-df <- df %>%
-  select(-FIPS, -CountyName) %>%
-  drop_na()
-
-cat("Sample size:", nrow(df), "\n")
-```
-
-
-```{r}
 # ---------------- CORRELATION PLOT ----------------
 # Remove categorical/binary variables before computing correlation
-df_corr <- df %>%
+df_corr <- df_out %>%
   select(-IsMetro, -PresDemRatio) %>%
   select(where(is.numeric))
 
@@ -164,34 +149,49 @@ The correlation matrix shows that all income and tax dollar-amount variables (Nu
 # ---------------- PAIRS PLOTS (GROUPED) ----------------
 
 # Group 1: Income / Economic
-pairs(df %>% select(PresDemRatio, TotalAgi, SalariesWages, BusinessNetIncome,
+pairs(df_out %>% select(PresDemRatio, TotalAgi, SalariesWages, BusinessNetIncome,
                     CapitalGains, UnemploymentComp, SocialSecurityBenefits),
       main = "Income Variables vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("steelblue", alpha.f = 0.4))
 
 # Group 2: Education & Demographics
-pairs(df %>% select(PresDemRatio, PctNoHs, PctHsOnly, PctSomeCollege,
+pairs(df_out %>% select(PresDemRatio, PctNoHs, PctHsOnly, PctSomeCollege,
                     PctBachelors, PctWhite, PctBlack, PctHispanic),
       main = "Education & Race vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("darkgreen", alpha.f = 0.4))
 
 # Group 3: Population & Age
-pairs(df %>% select(PresDemRatio, CensusPop2020, MedianAge, Pct18_34,
+pairs(df_out %>% select(PresDemRatio, CensusPop2020, MedianAge, Pct18_34,
                     Pct65Plus, AgeDependency),
       main = "Population & Age vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("purple", alpha.f = 0.4))
 
 # Group 4: Taxes & Wealth
-pairs(df %>% select(PresDemRatio, TotalTaxLiability, MortgageInterest,
+pairs(df_out %>% select(PresDemRatio, TotalTaxLiability, MortgageInterest,
                     CharitableContributions, EicAmount, NumEicReturns),
       main = "Tax & Wealth vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("firebrick", alpha.f = 0.4))
 ```
 
+Income Variables vs Voting:
+
+All income variables (TotalAgi, SalariesWages, BusinessNetIncome, CapitalGains, UnemploymentComp, SocialSecurityBenefits) show a heavily right-skewed, L-shaped relationship with PresDemRatio, with nearly all data points compressed near zero, suggesting these variables need log-transformation before modeling.
+
+Education & Race vs Voting: 
+
+PctBachelors has a visible positive trend with PresDemRatio, while PctNoHs and PctWhite show negative trends. PctBlack and PctHispanic show positive but noisier relationships. These variables seem to be the most promising predictors in their current form with no transformation needed.
+
+Population & Age vs Voting:
+
+CensusPop2020 is extremely right-skewed and needs log-transformation. MedianAge, Pct18_34, and Pct65Plus show weak, noisy relationships with PresDemRatio individually, though Pct65Plus and MedianAge looks correlated with each other.
+
+Tax & Wealth vs Voting: 
+
+L-shaped compression also show in TotalTaxLiability, MortgageInterest, CharitableContributions, EicAmount, and NumEicReturns, and thus all need log-transformation. Also, EicAmount and NumEicReturns looks correlated with each other.
 
 ```{r}
 # ---------------- MISSING DATA ----------------
