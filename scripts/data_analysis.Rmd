@@ -19,6 +19,7 @@ require(corrplot)
 require(leaps)
 library(ggplot2)
 library(reshape2)
+library(car)
 ```
 
 # Read in Data
@@ -57,7 +58,13 @@ hist(sqrt(df$PresDemRatio),
 
 The distribution of the square-root transformed one is not perfect but is definitely more bell-shape looking than that with log. Thus, we determine that our response variable needs a square-root transformation.
 
-## Exploratory Variable
+```{r}
+# Apply sqrt transformation to response
+df$sq_PresDemRatio <- sqrt(df$PresDemRatio)
+```
+
+
+## Exploratory Variable Examination and Transformations
 
 ### Check for Missing Data
 
@@ -148,11 +155,12 @@ df_corr <- df_out %>%
   select(where(is.numeric))
 
 corrplot(cor(df_corr),
-         title = "Correlation Matrix (Final Data)", 
-         mar = c(0,0,1,0), tl.cex = 0.5)
+         title   = "Correlation Matrix",
+         mar     = c(0, 0, 1, 0),
+         tl.cex  = 0.5)
 ```
 
-The correlation matrix shows that all income and tax dollar-amount variables (NumTaxReturns through ChildTaxCredit) form a near-perfectly correlated block, the age variables (MedianAge, Pct65Plus, OldAgeDependency, ChildDependency) cluster together, and the education variables (PctNoHs through PctBachelors) seems a little intercorrelated. Since our goal is purely predictive rather than inferential, we will not address multicollinearity and instead allow the best subsets selection procedure to identify the combination of variables that best predicts PresDemRatio.
+The correlation matrix shows that all income and tax dollar-amount variables (NumTaxReturns through ChildTaxCredit) form a near-perfectly correlated block, the age variables (MedianAge, Pct65Plus, OldAgeDependency, ChildDependency) cluster together, and the education variables (PctNoHs through PctBachelors) are moderately intercorrelated. Since our initial analysis goal is strong predictive rather than inferential, we will not address multicollinearity and instead allow the best subsets selection procedure to identify the combination of variables that best predicts PresDemRatio. Multicollinearity will be addressed formally in Step 3. 
 
 
 ```{r echo=FALSE}
@@ -205,10 +213,7 @@ L-shaped compression also show in TotalTaxLiability, MortgageInterest, Charitabl
 
 
 ```{r echo=FALSE}
-# ---------------- PREP FOR BEST SUBSETS ----------------
-df$sq_PresDemRatio <- sqrt(df$PresDemRatio)
-
-# ---------------- TRANSFORMATIONS ----------------
+# ---------------- APPLY TRANSFORMATIONS ----------------
 df_best <- df %>%
   mutate(
     # Log-transform the financial variables
@@ -248,11 +253,16 @@ par(mfrow = c(1, 1))
 cat("Remaining variables:", ncol(df_best), "\n")
 cat("Sample size:", nrow(df_best), "\n")
 print(names(df_best))
+```
+## STEP 3: Multicollinearity (VIF) and mean-centering
 
-# Drop one category from each compositional group to remove linear dependencies
-# Education: drop PctNoHs (reference), Race: drop PctWhite (reference)
-df_model <- df_best %>%
+```{r}
+# TODO: IsMetro is not working.
+
+# Build full candidate model to compute VIFs
+df_vif <- df_best %>%
   select(
+    # Response
     sq_PresDemRatio,
     
     # Income (log-transformed)
@@ -284,67 +294,217 @@ df_model <- df_best %>%
     NumTaxReturns, PartnershipIncome,
     NumEicReturns, ChildTaxCredit
     
-    # REMOVED: PctNoHs, PctWhite (said dropped), PctMale (duplicate),
-    #          NetMigration2020 (duplicate), DeathRate2020 (duplicate)
+    # REMOVED: PctNoHs, PctWhite (said dropped)
   ) %>%
   drop_na()
 
-# Sanity check BEFORE running best subsets
+# IsMetro (aliased coefficients in the model issue)
+df_vif <- df_vif %>% select(-IsMetro)
+
+#Create full model
+lm_full_vif <- lm(sq_PresDemRatio ~ ., data = df_vif)
+# Run VIF
+vif_vals <- vif(lm_full_vif)
+vif_df   <- data.frame(Variable = names(vif_vals), VIF = round(vif_vals, 2)) %>%
+  arrange(desc(VIF))
+print(vif_df)
+
+# Flag high-VIF variables (more than 10 is standard threshold)
+cat("\nHigh VIF variables:\n")
+print(vif_df %>% filter(VIF > 10))
+```
+
+Our VIF analysis shows extreme multicollinearity in the full model, with several predictors having extraordinarily large VIF values that indicate strong relationships among variables. 
+
+In particular, income-related variables such as *log_TotalAgi* (VIF = 10,384.37) and *log_SalariesWages* (VIF = 9,678.03) are almost perfectly collinear, thus only one of these variables should be kept. 
+
+Similarly, scale variables such as *log_CensusPop2020* (VIF = 559.23) and *log_TotalTaxLiability* (VIF = 554.50) are strongly tied to *NumTaxReturns* (VIF = 39.94), suggesting one representative measure (ex: population) should be kept while the others are removed. 
+
+Also, *log_EicAmount* (VIF = 77.27), *NumEicReturns* (VIF = 67.40), and *ChildTaxCredit* (VIF = 58.91) are seems redundant, so only one should be included. 
+
+Age-related predictors also display structural multicollinearity, with *OldAgeDependency* (VIF = 141.65), *Pct65Plus* (VIF = 113.30), *ChildDependency* (VIF = 23.31), and *MedianAge* (VIF = 22.73), thus a single summary measure such as *MedianAge* or *Pct65Plus* should be retained while dependency ratios are excluded. 
+
+Lastly, *PropSalaries* (VIF = 45.78) and *AvgWage* (VIF = 14.92) are both related to labor composition and in broader income components such as *log_BusinessNetIncome* (VIF = 19.80) and *log_CapitalGains* (VIF = 26.15). 
+
+```{r}
+# ---------------- MEAN-CENTERING ----------------
+# Mean-centering is essential before introducing interaction terms in Step 5
+# to reduce multicollinearity between main effects and their interactions
+# and to make intercepts interpretable
+
+df_model <- df_vif %>%
+  mutate(across(
+    -c(sq_PresDemRatio),  # don't center response
+    ~ . - mean(., na.rm = TRUE),
+    .names = "{.col}"              # overwrite in place (centered)
+  ))
+
+cat("Mean-centering confirmed:\n")
+print(round(colMeans(df_model %>% select(-sq_PresDemRatio)), 4))
+
+# Sanity check
 cat("Response variable range:\n")
 print(summary(df_model$sq_PresDemRatio))
-# Should be ~0.2 to 0.9 (square roots of proportions), NOT 0 to 1
-
 cat("Variables in model data:", ncol(df_model) - 1, "\n")
 cat("Sample size:", nrow(df_model), "\n")
+```
 
-# ---------------- BEST SUBSETS ----------------
-regfit <- regsubsets(
+## Best Subsets - Two Groups
+
+```{r echo=FALSE}
+# ---------------- PREP FOR BEST SUBSETS ----------------
+# TODO: Adding correct IsMetro for further analysis in group 1
+
+# Group 1: Prosperity & Demographic Controls
+df_group1 <- df_model %>%
+  select(
+    sq_PresDemRatio,
+    log_TotalAgi, log_SalariesWages, log_CapitalGains,
+    log_SocialSecurityBenefits, log_MortgageInterest,
+    log_CharitableContributions, log_TotalTaxLiability,
+    log_CensusPop2020, PropSalaries, AvgWage,
+    PctBachelors, PctHsOnly, PctSomeCollege,
+    PctBlack, PctAsian, PctHispanic,
+    PctMale, PctUrban,
+    MedianAge, Pct18_34,
+    NetMigration2020, BirthRate2020, DeathRate2020
+  )
+
+# Group 2: Economic Distress Variables
+df_group2 <- df_model %>%
+  select(
+    sq_PresDemRatio,
+    UnemploymentRate2020,
+    log_UnemploymentComp,
+    log_EicAmount,
+    NumEicReturns,
+    ChildTaxCredit,
+    OldAgeDependency,
+    ChildDependency,
+    log_BusinessNetIncome
+  )
+```
+
+
+```{r echo=FALSE}
+# ---------------- BEST SUBSETS: GROUP 1 ----------------
+fit_g1 <- regsubsets(
   sq_PresDemRatio ~ .,
-  data    = df_model,
-  nvmax   = 20,
-  method  = "seqrep"
+  data   = df_group1,
+  nvmax  = 20,
+  method = "seqrep"
 )
+
+s_g1 <- summary(fit_g1)
+
+best_models_g1 <- data.frame(
+  NumVars = 1:length(s_g1$adjr2),
+  AdjR2   = round(s_g1$adjr2, 4),
+  s_g1$which
+) %>% arrange(desc(AdjR2))
+
+cat("=== GROUP 1: Prosperity & Demographics ===\n")
+head(best_models_g1, 10)
+
+best_n_g1 <- which.max(s_g1$adjr2)
+cat("Best model size (Adj R2):", best_n_g1, "variables\n")
+cat("Best Adj R2:", round(max(s_g1$adjr2), 4), "\n")
 
 # Plot
-plot(regfit, scale = "adjr2",
-     main = "Best Subsets",
+plot(s_g1$adjr2, type = "b",
+     xlab = "Number of Variables",
+     ylab = "Adjusted R2",
+     main = "Group 1 — Adjusted R2")
+points(best_n_g1, max(s_g1$adjr2), col = "red", pch = 16, cex = 1.5)
+
+plot(fit_g1, scale = "adjr2",
+     main = "Group 1: Variable Inclusion",
      cex.axis = 0.55)
 
-# Summary table
-get_best <- function(model) {
-  s <- summary(model)
-  data.frame(
-    NumVars = 1:length(s$adjr2),
-    AdjR2   = round(s$adjr2, 4)
-  ) %>% arrange(desc(AdjR2))
-}
+# Selected variables
+vars_g1 <- names(coef(fit_g1, best_n_g1))[-1]
+cat("Selected from Group 1:\n")
+print(vars_g1)
+```
 
-best_models <- get_best(regfit)
-head(best_models, 10)
-
-s <- summary(regfit)
-cat("\nBest model by Adjusted R2:", which.max(s$adjr2), "variables\n")
-
-plot(s$adjr2, type = "b", xlab = "# Variables", ylab = "Adj R2", main = "Adjusted R2")
-points(which.max(s$adjr2), max(s$adjr2), col = "red", pch = 16, cex = 1.5)
-
-# ---------------- FIT BEST MODEL ----------------
-best_n    <- which.max(s$adjr2)
-coef_best <- coef(regfit, best_n)
-vars_best <- names(coef_best)[-1]
-cat("\nVariables in best model (Adj R2):\n")
-print(vars_best)
-
-best_formula <- as.formula(
-  paste("sq_PresDemRatio ~", paste(vars_best, collapse = " + "))
+```{r}
+# ---------------- BEST SUBSETS: GROUP 2 ----------------
+fit_g2 <- regsubsets(
+  sq_PresDemRatio ~ .,
+  data   = df_group2,
+  nvmax  = 10,
+  method = "seqrep"
 )
 
-lm_best <- lm(best_formula, data = df_model)
-summary(lm_best)
+s_g2 <- summary(fit_g2)
+
+best_models_g2 <- data.frame(
+  NumVars = 1:length(s_g2$adjr2),
+  AdjR2   = round(s_g2$adjr2, 4),
+  s_g2$which
+) %>% arrange(desc(AdjR2))
+
+cat("\n=== GROUP 2: Economic Distress ===\n")
+head(best_models_g2, 10)
+
+best_n_g2 <- which.max(s_g2$adjr2)
+cat("Best model size (Adj R2):", best_n_g2, "variables\n")
+cat("Best Adj R2:", round(max(s_g2$adjr2), 4), "\n")
+
+# Plot
+plot(s_g2$adjr2, type = "b",
+     xlab = "Number of Variables",
+     ylab = "Adjusted R2",
+     main = "Group 2 — Adjusted R2")
+points(best_n_g2, max(s_g2$adjr2), col = "red", pch = 16, cex = 1.5)
+
+plot(fit_g2, scale = "adjr2",
+     main = "Group 2: Variable Inclusion",
+     cex.axis = 0.55)
+
+# Selected variables
+vars_g2 <- names(coef(fit_g2, best_n_g2))[-1]
+cat("Selected from Group 2:\n")
+print(vars_g2)
+```
+
+```{r}
+# ---------------- REDUCED MODEL (GROUP 1 ONLY) ----------------
+reduced_formula <- as.formula(
+  paste("sq_PresDemRatio ~", paste(vars_g1, collapse = " + "))
+)
+
+lm_reduced <- lm(reduced_formula, data = df_model)
 
 # ---------------- RESIDUAL DIAGNOSTICS ----------------
-plot(lm_best)
 
+cat("\n=== REDUCED MODEL SUMMARY ===\n")
+summary(lm_reduced)
+
+par(mfrow = c(1, 1))
+plot(lm_reduced)
+par(mfrow = c(1, 1))
+
+# # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
+# model_df <- model.frame(lm_reduced)
+# res <- residuals(lm_reduced)
+# for (v in vars_g1) {
+#   plot(model_df[[v]], res,
+#        xlab = v,
+#        ylab = "Residuals",
+#        main = paste("Residuals vs", v),
+#        pch  = 16, cex = 0.5,
+#        col  = adjustcolor("steelblue", alpha.f = 0.5))
+#   
+#   abline(h = 0, col = "red", lty = 2)
+# }
+```
+
+```{r echo=FALSE}
+# ---------------- FIT BEST MODEL ----------------
+# TODO
+# ---------------- RESIDUAL DIAGNOSTICS ----------------
+# TODO
 # # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
 # for (v in vars_best) {
 #   plot(df_model[[v]], lm_best$residuals,
