@@ -35,9 +35,15 @@ Code book available [here](https://docs.google.com/spreadsheets/d/1A-s4d9eTGT6rG
 
 Each row is unique by column `FIPS`.
 
+```{r echo=FALSE}
+cat("Original data's nubmer of rows:", nrow(df), "\n")
+cat("Original data's nubmer of columns:", ncol(df), "\n")
+```
+
+
 # 1. Data Transformation
 
-## Response Variable: PresDemRatio
+## 1.1 Response Variable: PresDemRatio
 
 ```{r echo=FALSE}
 hist(df$PresDemRatio,
@@ -58,17 +64,17 @@ hist(sqrt(df$PresDemRatio),
 
 The distribution of the square-root transformed one is not perfect but is definitely more bell-shape looking than that with log. Thus, we determine that our response variable needs a square-root transformation.
 
-```{r}
+```{r echo=FALSE}
 # Apply sqrt transformation to response
 df$sq_PresDemRatio <- sqrt(df$PresDemRatio)
 ```
 
 
-## Exploratory Variable Examination and Transformations
+## 1.2 Exploratory Variable
 
-### Check for Missing Data
+### 1.2.1 Check for Missing Data
 
-```{r}
+```{r echo=FALSE}
 # ---------------- MISSING DATA ----------------
 missing_summary <- df %>%
   summarise(across(everything(), ~ sum(is.na(.)))) %>%
@@ -80,11 +86,17 @@ missing_summary <- df %>%
   arrange(desc(Missing))
 
 print(missing_summary)
+
+# remove rows with NAs
+df1 <- df %>%
+  drop_na()
+cat("Number of rows before removing rows with NAs:", nrow(df), "\n")
+cat("Number of rows after removing rows with NAs:", nrow(df1), "\n")
 ```
 
-None of our variables have more than 0.5% of missing data so we do not have to exclude any variables.
+None of our variables have more than 0.5% of missing data so we do not have to exclude any variables (remove no columns).
 
-### Outliers
+### 1.2.2 Outliers
 
 ```{r echo=FALSE}
 # Prep data
@@ -144,11 +156,9 @@ wrap_plots(plot_list[37:39], ncol = 1, nrow = 3) +
 
 Cook's Distance (Cook, 1977) is used here as the primary outlier detection method because it measures the influence of each observation on the fitted regression coefficients which is directly relevant to our goal of building a regression model. Unlike distributional methods such as IQR or Z-score outlier detection, which only flagged observations based on a single variable's distribution, Cook's D identifies observations whose removal would substantially change the estimated relationship between a predictor and the response variable (Belsley, Kuh & Welsch, 1980). The standard threshold of 4/n (Cook & Weisberg, 1982) is applied, where n is the number of complete observations for each predictor-response pair. Although the outliers are identified, we don't remove them without good reasons.
 
-### Correlation Plots
-
+### 1.2.3 Correlation Plots
 
 ```{r echo=FALSE}
-# ---------------- CORRELATION PLOT ----------------
 # Remove categorical/binary variables before computing correlation
 df_corr <- df_out %>%
   select(-IsMetro, -PresDemRatio) %>%
@@ -160,12 +170,11 @@ corrplot(cor(df_corr),
          tl.cex  = 0.5)
 ```
 
-The correlation matrix shows that all income and tax dollar-amount variables (NumTaxReturns through ChildTaxCredit) form a near-perfectly correlated block, the age variables (MedianAge, Pct65Plus, OldAgeDependency, ChildDependency) cluster together, and the education variables (PctNoHs through PctBachelors) are moderately intercorrelated. Since our initial analysis goal is strong predictive rather than inferential, we will not address multicollinearity and instead allow the best subsets selection procedure to identify the combination of variables that best predicts PresDemRatio. Multicollinearity will be addressed formally in Step 3. 
+The correlation matrix shows that all income and tax dollar-amount variables (NumTaxReturns through ChildTaxCredit) form a near-perfectly correlated block, the age variables (MedianAge, Pct65Plus, OldAgeDependency, ChildDependency) cluster together, and the education variables (PctNoHs through PctBachelors) are moderately intercorrelated. Since our initial analysis goal is strong predictive rather than inferential, we will not address multicollinearity and instead allow the best subsets selection procedure to identify the combination of variables that best predicts PresDemRatio. Multicollinearity will be addressed formally in part **1.2.4**. 
 
 
 ```{r echo=FALSE}
 # ---------------- PAIRS PLOTS (GROUPED) ----------------
-
 # Group 1: Income / Economic
 pairs(df_out %>% select(PresDemRatio, TotalAgi, SalariesWages, PropSalaries, AvgWage, BusinessNetIncome,
                     CapitalGains, UnemploymentComp, SocialSecurityBenefits),
@@ -195,26 +204,28 @@ pairs(df_out %>% select(PresDemRatio, TotalTaxLiability, MortgageInterest,
       col = adjustcolor("firebrick", alpha.f = 0.4))
 ```
 
-Income Variables vs Voting:
+**Income Variables vs Voting:**
 
-All income variables (TotalAgi, SalariesWages, BusinessNetIncome, CapitalGains, UnemploymentComp, SocialSecurityBenefits) show a heavily right-skewed, L-shaped relationship with PresDemRatio, with nearly all data points compressed near zero, suggesting these variables need log-transformation before modeling.
+All income variables (TotalAgi, SalariesWages, CapitalGains, UnemploymentComp, SocialSecurityBenefits) show a heavily right-skewed, L-shaped relationship with PresDemRatio, with nearly all data points compressed near zero, suggesting these variables need log-transformation before modeling. 
 
-Education & Race vs Voting: 
+PropSalaries and AvgWage look slightly skewed and would benefit from square-root transformation.
+
+**Education & Race vs Voting:**
 
 PctBachelors has a visible positive trend with PresDemRatio, while PctNoHs and PctWhite show negative trends. PctBlack and PctHispanic show positive but noisier relationships. These variables seem to be the most promising predictors in their current form with no transformation needed.
 
-Population & Age vs Voting:
+**Population & Age vs Voting:**
 
 CensusPop2020 is extremely right-skewed and needs log-transformation. MedianAge, Pct18_34, and Pct65Plus show weak, noisy relationships with PresDemRatio individually, though Pct65Plus and MedianAge looks correlated with each other.
 
-Tax & Wealth vs Voting: 
+**Tax & Wealth vs Voting:** 
 
 L-shaped compression also show in TotalTaxLiability, MortgageInterest, CharitableContributions, EicAmount, and NumEicReturns, and thus all need log-transformation. Also, EicAmount and NumEicReturns looks correlated with each other.
 
 
 ```{r echo=FALSE}
 # ---------------- APPLY TRANSFORMATIONS ----------------
-df_best <- df %>%
+df2 <- df %>%
   mutate(
     # Log-transform the financial variables
     log_TotalAgi                = log(TotalAgi + 1),
@@ -227,14 +238,18 @@ df_best <- df %>%
     log_MortgageInterest        = log(MortgageInterest + 1),
     log_CharitableContributions = log(CharitableContributions + 1),
     log_EicAmount               = log(EicAmount + 1),
-    log_CensusPop2020           = log(CensusPop2020 + 1)
+    log_CensusPop2020           = log(CensusPop2020 + 1),
+    
+    # sqrt-transform lightly skewed data
+    sqrt_PropSalaries           = sqrt(PropSalaries),
+    sqrt_AvgWage                = sqrt(AvgWage) 
   ) %>%
   # Drop original untransformed versions only, keep everything else
   select(
     -TotalAgi, -SalariesWages, -BusinessNetIncome, -CapitalGains,
     -UnemploymentComp, -SocialSecurityBenefits, -TotalTaxLiability,
     -MortgageInterest, -CharitableContributions, -EicAmount, -CensusPop2020,
-    -PresDemRatio
+    -PresDemRatio, -PropSalaries, -AvgWage
   )
 
 # ---------------- VERIFY TRANSFORMATIONS ----------------
@@ -242,19 +257,19 @@ par(mfrow = c(3, 4))
 log_vars <- c("log_TotalAgi", "log_SalariesWages", "log_BusinessNetIncome",
               "log_CapitalGains", "log_UnemploymentComp", "log_SocialSecurityBenefits",
               "log_TotalTaxLiability", "log_MortgageInterest",
-              "log_CharitableContributions", "log_EicAmount", "log_CensusPop2020")
+              "log_CharitableContributions", "log_EicAmount", "log_CensusPop2020",
+              "sqrt_PropSalaries", "sqrt_AvgWage")
 
 for (v in log_vars) {
-  hist(df_best[[v]],
+  hist(df2[[v]],
        main = v, xlab = "", col = "steelblue", cex.main = 0.8)
 }
 par(mfrow = c(1, 1))
 
-cat("Remaining variables:", ncol(df_best), "\n")
-cat("Sample size:", nrow(df_best), "\n")
-print(names(df_best))
+cat("Number of columns now:", ncol(df2), "\n")
+cat("Number of rows now:", nrow(df2), "\n")
 ```
-## STEP 3: Multicollinearity (VIF) and mean-centering
+### 1.2.4 Multicollinearity (VIF) and mean-centering
 
 ```{r}
 # TODO: IsMetro is not working.

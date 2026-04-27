@@ -303,7 +303,9 @@ FinalData <- VotingData2020Clean %>%
   # calculate proportions
   mutate(
     PropSalaries = SalariesWages / TotalAgi,
-    AvgWage = SalariesWages / NumTaxReturns
+    AvgWage      = SalariesWages / NumTaxReturns,
+    PropBusiness = BusinessNetIncome / TotalAgi,
+    AvgBusiness  = BusinessNetIncome / NumTaxReturns
   )
   
 write_csv(FinalData, "./data/clean/FINAL_DATA.csv")
