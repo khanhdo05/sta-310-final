@@ -20,6 +20,7 @@ require(leaps)
 library(ggplot2)
 library(reshape2)
 library(car)
+library(broom)
 ```
 
 # Overview
@@ -51,8 +52,6 @@ In this analysis, we are interested in exploring if the **Economic distress mark
 - Reliance on unemployment compensation (PropUnemplComp)
 
 - Breadth and intensity of low-income household prevalence (PropEicReturns and PropEicAmount)
-
-- Financial support dependency for families with children (PropChildTax)
 
 - Elderly and aging population burdens (OldAgeDependency, PropSocSec, and PropPensions)
 
@@ -243,257 +242,276 @@ corrplot(cor(df_corr),
 
 - **Prosperity:** TotalAgi shows a positive relationship with AvgWage and PropCharity, but its correlation with the vote share is less pronounced than the "per-capita" or "proportion" versions. PropBusiness and AvgBusiness have strong correlation as well since they share the same numerator - we will likely just use PropBusiness because it aligns with our research into general prosperity.
 
-
 ```{r echo=FALSE}
 # Group 1: General Prosperity and Affluence
-pairs(df_out %>% select(sq_PresDemRatio, TotalAgi, PropCapitalGains, PropPartnership, 
+pairs(df3 %>% select(sq_PresDemRatio, TotalAgi, PropCapitalGains, PropPartnership, 
                          PropMortgage, PropCharity, PropTaxLiability, PropSalaries, AvgWage),
       main = "General Prosperity vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("steelblue", alpha.f = 0.4))
+```
 
+**Group 1: General Prosperity and Affluence:** This group shows a strong "scale problem" where raw totals like TotalAgi are heavily skewed and highly correlated with each other. However, when normalized, markers like AvgWage and PropCharity show a positive correlation with the Democratic vote share, illustrating the "prosperity paradox" where wealthier counties often lean left. **Transformation Needed**: Log transformation for TotalAgi to handle extreme right-skewness and square root for prosperity ratios (like PropSalaries) to stabilize variance.
+
+```{r echo=FALSE}
 # Group 2: Economic Distress and Financial Vulnerability
-pairs(df_out %>% select(sq_PresDemRatio, UnemploymentRate2020, PropUnemplComp, 
+pairs(df3 %>% select(sq_PresDemRatio, UnemploymentRate2020, PropUnemplComp, 
                          PropSocSec, PropPensions, PropEicAmount, PropEicReturns, PropChildTax),
       main = "Economic Distress vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("firebrick", alpha.f = 0.4))
+```
 
+**Group 2: Economic Distress and Financial Vulnerability:** There is significant internal redundancy among EIC-related variables and child tax credits. Interestingly, many markers of "stress" like PropEicReturns show a negative correlation with sq_PresDemRatio in these plots, suggesting that economic decline in certain areas may correlate with a move away from Democratic support. **Transformation Needed:** Square root for these ratios to handle mild skewness and boundary effects.
+
+```{r echo=FALSE}
 # Group 3: Educational Attainment
-pairs(df_out %>% select(sq_PresDemRatio, PctNoHs, PctHsOnly, PctSomeCollege, PctBachelors),
+pairs(df3 %>% select(sq_PresDemRatio, PctNoHs, PctHsOnly, PctSomeCollege, PctBachelors),
       main = "Education Levels vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("darkgreen", alpha.f = 0.4))
+```
 
+**Group 3: Educational Attainment:** PctBachelors is one of the strongest positive predictors for Democratic support. The matrix reveals high multicollinearity within this group, particularly a strong negative relationship between PctBachelors and lower education levels like PctHsOnly. **Transformation Needed:** Square root for these percentages to ensure they meet the linearity assumptions of the regression model.
+
+```{r echo=FALSE}
 # Group 4: Racial and Gender Demographics
-pairs(df_out %>% select(sq_PresDemRatio, PctWhite, PctBlack, PctAsian, PctHispanic, PctMale),
+pairs(df3 %>% select(sq_PresDemRatio, PctWhite, PctBlack, PctAsian, PctHispanic, PctMale),
       main = "Demographics vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("darkorchid", alpha.f = 0.4))
+```
 
+**Group 4: Racial and Gender Demographics:** This group exhibits a "zero-sum" multicollinearity effect, where PctWhite is strongly negatively correlated with all other racial categories. Diversity markers (PctBlack, PctHispanic, PctAsian) are generally positive predictors for sq_PresDemRatio. **Transformation Needed:** Square root for all racial percentage variables.
+
+```{r echo=FALSE}
 # Group 5: Age and Dependency Ratios
-pairs(df_out %>% select(sq_PresDemRatio, MedianAge, Pct18_34, Pct65Plus, 
+pairs(df3 %>% select(sq_PresDemRatio, MedianAge, Pct18_34, Pct65Plus, 
                          AgeDependency, OldAgeDependency, ChildDependency),
       main = "Age and Dependency vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("darkorange", alpha.f = 0.4))
+```
 
+**Group 5: Age and Dependency Ratios:** There is a massive "super-cluster" of multicollinearity between MedianAge, Pct65Plus, and OldAgeDependency. These variables are virtually redundant, and the plots show that older counties generally correlate with lower Democratic vote shares. **Transformation Needed:** Square root for dependency ratios to stabilize the variance of these calculated proportions.
+
+```{r echo=FALSE}
 # Group 6: Urbanization and Population Dynamics
-pairs(df_out %>% select(sq_PresDemRatio, PctUrban, IsMetro, BirthRate2020, 
+pairs(df3 %>% select(sq_PresDemRatio, PctUrban, IsMetro, BirthRate2020, 
                          DeathRate2020, MigrationRate2020),
       main = "Urbanization and Dynamics vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("dodgerblue", alpha.f = 0.4))
+```
 
+**Group 6: Urbanization and Population Dynamics:** PctUrban shows a distinct, non-linear positive relationship with Democratic voting. This group captures the urban-rural divide, with metropolitan integration (IsMetro) acting as a clear categorical separator. **Transformation Needed:** Square root for PctUrban to address its right-skewed distribution.
+
+```{r echo=FALSE}
 # Group 7: Business and Self-Employment Income
-pairs(df_out %>% select(sq_PresDemRatio, PropBusiness, AvgBusiness),
+pairs(df3 %>% select(sq_PresDemRatio, PropBusiness, AvgBusiness),
       main = "Business Income vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("goldenrod", alpha.f = 0.4))
 ```
 
-**Income Variables vs Voting:**
-
-All income variables (TotalAgi, SalariesWages, CapitalGains, UnemploymentComp, SocialSecurityBenefits) show a heavily right-skewed, L-shaped relationship with PresDemRatio, with nearly all data points compressed near zero, suggesting these variables need log-transformation before modeling. 
-
-PropSalaries and AvgWage look slightly skewed and would benefit from square-root transformation.
-
-**Education & Race vs Voting:**
-
-PctBachelors has a visible positive trend with PresDemRatio, while PctNoHs and PctWhite show negative trends. PctBlack and PctHispanic show positive but noisier relationships. These variables seem to be the most promising predictors in their current form with no transformation needed.
-
-**Population & Age vs Voting:**
-
-CensusPop2020 is extremely right-skewed and needs log-transformation. MedianAge, Pct18_34, and Pct65Plus show weak, noisy relationships with PresDemRatio individually, though Pct65Plus and MedianAge looks correlated with each other.
-
-**Tax & Wealth vs Voting:** 
-
-L-shaped compression also show in TotalTaxLiability, MortgageInterest, CharitableContributions, EicAmount, and NumEicReturns, and thus all need log-transformation. Also, EicAmount and NumEicReturns looks correlated with each other.
-
+**Group 7: Business and Self-Employment Income:** PropBusiness and AvgBusiness are highly redundant. This group is unique because it can contain negative values (representing business losses), which prevents standard log transformations. **Transformation Needed:** An Inverse Hyperbolic Sine (IHS) transformation is required to handle negative values while mimicking a log scale to manage skewness (as established in our conversation history).
 
 ```{r echo=FALSE}
 # ---------------- APPLY TRANSFORMATIONS ----------------
-df2 <- df %>%
+df4 <- df3 %>%
   mutate(
-    # Log-transform the financial variables
-    log_TotalAgi                = log(TotalAgi + 1),
-    log_SalariesWages           = log(SalariesWages + 1),
-    log_BusinessNetIncome       = log(BusinessNetIncome + 1),
-    log_CapitalGains            = log(CapitalGains + 1),
-    log_UnemploymentComp        = log(UnemploymentComp + 1),
-    log_SocialSecurityBenefits  = log(SocialSecurityBenefits + 1),
-    log_TotalTaxLiability       = log(TotalTaxLiability + 1),
-    log_MortgageInterest        = log(MortgageInterest + 1),
-    log_CharitableContributions = log(CharitableContributions + 1),
-    log_EicAmount               = log(EicAmount + 1),
-    log_CensusPop2020           = log(CensusPop2020 + 1),
+    # group 1
+    log_TotalAgi = log1p(TotalAgi),
+    sq_PropSalaries = sqrt(PropSalaries),
+    sq_PropCharity = sqrt(PropCharity),
+    sq_PropTaxLiability = sqrt(PropTaxLiability),
     
-    # sqrt-transform lightly skewed data
-    sqrt_PropSalaries           = sqrt(PropSalaries),
-    sqrt_AvgWage                = sqrt(AvgWage) 
+    # group 2
+    sq_PropUnemplComp = sqrt(PropUnemplComp),
+    sq_PropEicAmount = sqrt(PropEicAmount),
+    sq_PropEicReturns = sqrt(PropEicReturns),
+    sq_PropChildTax = sqrt(PropChildTax),
+    
+    # group 3
+    sq_PctBachelors = sqrt(PctBachelors),
+    sq_PctNoHs = sqrt(PctNoHs),
+    sq_PctHsOnly = sqrt(PctHsOnly),
+    
+    # group 4
+    sq_PctWhite = sqrt(PctWhite),
+    sq_PctBlack = sqrt(PctBlack),
+    sq_PctHispanic = sqrt(PctHispanic),
+    sq_PctAsian = sqrt(PctAsian),
+    
+    # group 5
+    sq_OldAgeDependency = sqrt(OldAgeDependency),
+    sq_ChildDependency = sqrt(ChildDependency),
+    sq_AgeDependency = sqrt(AgeDependency),
+    
+    # group 6
+    sq_PctUrban = sqrt(PctUrban),
+    sq_BirthRate = sqrt(BirthRate2020),
+    sq_DeathRate = sqrt(DeathRate2020),
+    
+    # group 7
+    ihs_PropBusiness = asinh(PropBusiness),
+    ihs_AvgBusiness = asinh(AvgBusiness)
   ) %>%
   # Drop original untransformed versions only, keep everything else
   select(
-    -TotalAgi, -SalariesWages, -BusinessNetIncome, -CapitalGains,
-    -UnemploymentComp, -SocialSecurityBenefits, -TotalTaxLiability,
-    -MortgageInterest, -CharitableContributions, -EicAmount, -CensusPop2020,
-    -PresDemRatio, -PropSalaries, -AvgWage
+    -TotalAgi, -PropSalaries, -PropCharity, -PropTaxLiability,
+    -PropUnemplComp, -PropEicAmount, -PropEicReturns, -PropChildTax,
+    -PctBachelors, -PctNoHs, -PctHsOnly,
+    -PctWhite, -PctBlack, -PctHispanic, -PctAsian,
+    -OldAgeDependency, -ChildDependency, -AgeDependency,
+    -PctUrban, -BirthRate2020, -DeathRate2020,
+    -PropBusiness, -AvgBusiness
   )
 
 # ---------------- VERIFY TRANSFORMATIONS ----------------
-par(mfrow = c(3, 4))
-log_vars <- c("log_TotalAgi", "log_SalariesWages", "log_BusinessNetIncome",
-              "log_CapitalGains", "log_UnemploymentComp", "log_SocialSecurityBenefits",
-              "log_TotalTaxLiability", "log_MortgageInterest",
-              "log_CharitableContributions", "log_EicAmount", "log_CensusPop2020",
-              "sqrt_PropSalaries", "sqrt_AvgWage")
+par(mfrow = c(6, 4), mar = c(2, 2, 2, 1))
+all_transformed_vars <- c(
+  "log_TotalAgi", "sq_PropSalaries", "sq_PropCharity", "sq_PropTaxLiability",
+  "sq_PropUnemplComp", "sq_PropEicAmount", "sq_PropEicReturns", "sq_PropChildTax",
+  "sq_PctBachelors", "sq_PctNoHs", "sq_PctHsOnly",
+  "sq_PctWhite", "sq_PctBlack", "sq_PctHispanic", "sq_PctAsian",
+  "sq_OldAgeDependency", "sq_ChildDependency", "sq_AgeDependency",
+  "sq_PctUrban", "sq_BirthRate", "sq_DeathRate",
+  "ihs_PropBusiness", "ihs_AvgBusiness"
+)
 
-for (v in log_vars) {
-  hist(df2[[v]],
-       main = v, xlab = "", col = "steelblue", cex.main = 0.8)
+for (v in all_transformed_vars) {
+  # Verify variable exists in df4 to avoid errors
+  if (v %in% names(df4)) {
+    hist(df4[[v]], 
+         main = v, 
+         xlab = "", 
+         col = "steelblue", 
+         border = "white",
+         cex.main = 0.8) # Smaller title text to fit the grid
+  } else {
+    message(paste("Warning: Variable", v, "not found in df4."))
+  }
 }
 par(mfrow = c(1, 1))
 
 cat("Number of columns now:", ncol(df2), "\n")
 cat("Number of rows now:", nrow(df2), "\n")
 ```
-### 1.2.4 Multicollinearity (VIF) and mean-centering
 
-```{r}
-# TODO: IsMetro is not working.
+**Interpretation:**
 
-# Build full candidate model to compute VIFs
-df_vif <- df_best %>%
-  select(
-    # Response
-    sq_PresDemRatio,
-    
-    # Income (log-transformed)
-    log_TotalAgi, log_SalariesWages, log_BusinessNetIncome,
-    log_CapitalGains, log_UnemploymentComp, log_SocialSecurityBenefits,
-    log_TotalTaxLiability, log_MortgageInterest,
-    log_CharitableContributions, log_EicAmount, log_CensusPop2020,
-    
-    # Other income
-    PropSalaries, AvgWage,
-    
-    # Education (PctNoHs dropped as reference)
-    PctHsOnly, PctSomeCollege, PctBachelors,
-    
-    # Race (PctWhite dropped as reference)
-    PctBlack, PctAsian, PctHispanic,
-    
-    # Demographics
-    PctMale, PctUrban, IsMetro,
-    
-    # Age
-    MedianAge, Pct18_34, Pct65Plus,
-    AgeDependency, OldAgeDependency, ChildDependency,
-    
-    # Other (NO duplicates)
-    UnemploymentRate2020, NetMigration2020,
-    BirthRate2020, DeathRate2020,
-    AvgWage, PropSalaries,
-    NumTaxReturns, PartnershipIncome,
-    NumEicReturns, ChildTaxCredit
-    
-    # REMOVED: PctNoHs, PctWhite (said dropped)
-  ) %>%
-  drop_na()
+log_TotalAgi is now roughly symmetric, correcting the extreme right-skew found in the raw income totals. Ratios such as sq_PropSalaries and sq_PropTaxLiability show significantly improved normality.
 
-# IsMetro (aliased coefficients in the model issue)
-df_vif <- df_vif %>% select(-IsMetro)
+The "stress" markers (e.g., sq_PropUnemplComp, sq_PropEicAmount, sq_PropEicReturns) are no longer heavily clustered at the zero-boundary, which will allow your model to more accurately estimate the impact of financial vulnerability.
 
-#Create full model
-lm_full_vif <- lm(sq_PresDemRatio ~ ., data = df_vif)
-# Run VIF
-vif_vals <- vif(lm_full_vif)
-vif_df   <- data.frame(Variable = names(vif_vals), VIF = round(vif_vals, 2)) %>%
-  arrange(desc(VIF))
-print(vif_df)
+Variables like sq_PctBachelors and the age dependency ratios (sq_OldAgeDependency, sq_AgeDependency) now appear nearly normal. However, sq_PctBlack, sq_PctAsian, and sq_PctHispanic still show a right-skew because many U.S. counties have very small minority populations; the square root has "pulled" these values out to make them more manageable, but they remain inherently skewed.
 
-# Flag high-VIF variables (more than 10 is standard threshold)
-cat("\nHigh VIF variables:\n")
-print(vif_df %>% filter(VIF > 10))
-```
+sq_PctUrban still shows a spike at zero (representing entirely rural counties), but the overall distribution is more spread out than the raw percentage.
 
-Our VIF analysis shows extreme multicollinearity in the full model, with several predictors having extraordinarily large VIF values that indicate strong relationships among variables. 
+The IHS transformation (ihs_PropBusiness, ihs_AvgBusiness) successfully handled potential negative values while achieving a unimodal distribution.
 
-In particular, income-related variables such as *log_TotalAgi* (VIF = 10,384.37) and *log_SalariesWages* (VIF = 9,678.03) are almost perfectly collinear, thus only one of these variables should be kept. 
+### 1.2.4 Mean-ccentering and Multicollinearity (VIF)
 
-Similarly, scale variables such as *log_CensusPop2020* (VIF = 559.23) and *log_TotalTaxLiability* (VIF = 554.50) are strongly tied to *NumTaxReturns* (VIF = 39.94), suggesting one representative measure (ex: population) should be kept while the others are removed. 
+We will first **mean-center** all numeric variables subtracting their mean. We exclude the unique identifier (FIPS), the categorical urbanization marker (IsMetro), and the transformed response variable (sq_PresDemRatio).
 
-Also, *log_EicAmount* (VIF = 77.27), *NumEicReturns* (VIF = 67.40), and *ChildTaxCredit* (VIF = 58.91) are seems redundant, so only one should be included. 
-
-Age-related predictors also display structural multicollinearity, with *OldAgeDependency* (VIF = 141.65), *Pct65Plus* (VIF = 113.30), *ChildDependency* (VIF = 23.31), and *MedianAge* (VIF = 22.73), thus a single summary measure such as *MedianAge* or *Pct65Plus* should be retained while dependency ratios are excluded. 
-
-Lastly, *PropSalaries* (VIF = 45.78) and *AvgWage* (VIF = 14.92) are both related to labor composition and in broader income components such as *log_BusinessNetIncome* (VIF = 19.80) and *log_CapitalGains* (VIF = 26.15). 
-
-```{r}
+```{r echo=FALSE}
 # ---------------- MEAN-CENTERING ----------------
-# Mean-centering is essential before introducing interaction terms in Step 5
+# Mean-centering is essential before introducing interaction terms in Reduced Model
 # to reduce multicollinearity between main effects and their interactions
 # and to make intercepts interpretable
 
-df_model <- df_vif %>%
-  mutate(across(
-    -c(sq_PresDemRatio),  # don't center response
-    ~ . - mean(., na.rm = TRUE),
-    .names = "{.col}"              # overwrite in place (centered)
-  ))
+df5 <- df4 %>%
+  mutate(across(where(is.numeric) & !any_of(c("FIPS", "sq_PresDemRatio", "IsMetro")), 
+                ~ . - mean(., na.rm = TRUE)))
 
-cat("Mean-centering confirmed:\n")
-print(round(colMeans(df_model %>% select(-sq_PresDemRatio)), 4))
-
-# Sanity check
-cat("Response variable range:\n")
-print(summary(df_model$sq_PresDemRatio))
-cat("Variables in model data:", ncol(df_model) - 1, "\n")
-cat("Sample size:", nrow(df_model), "\n")
+print("Verify mean is about 0:\n")
+df5 %>%
+  summarize(across(where(is.numeric), mean, na.rm = TRUE))
 ```
 
-## Best Subsets - Two Groups
+We then address the extreme redundancy seen in our Correlation Matrix through **VIFs**.
+
+AgeDependency is the combination of OldAgeDependency and ChildDependency. Including all three is a "perfect" alias that makes VIF calculation mathematically impossible so we drop sq_AgeDependency. Like we mentioned earlier, we will use PropBusiness instead of AvgBusiness so we will drop ihs_AvgBusiness. We will also drop sq_PctNoHs. sq_PropEicAmount and sq_PropEicReturns is nearly identical and we will drop PropEicReturns since we are more interested in the intensity of poverty, not depth.
 
 ```{r echo=FALSE}
-# ---------------- PREP FOR BEST SUBSETS ----------------
-# TODO: Adding correct IsMetro for further analysis in group 1
+df6 <- df5 %>%
+  select(-sq_AgeDependency, -ihs_AvgBusiness, -sq_PctNoHs, -sq_PropEicReturns)
 
-# Group 1: Prosperity & Demographic Controls
-df_group1 <- df_model %>%
-  select(
-    sq_PresDemRatio,
-    log_TotalAgi, log_SalariesWages, log_CapitalGains,
-    log_SocialSecurityBenefits, log_MortgageInterest,
-    log_CharitableContributions, log_TotalTaxLiability,
-    log_CensusPop2020, PropSalaries, AvgWage,
-    PctBachelors, PctHsOnly, PctSomeCollege,
-    PctBlack, PctAsian, PctHispanic,
-    PctMale, PctUrban,
-    MedianAge, Pct18_34,
-    NetMigration2020, BirthRate2020, DeathRate2020
-  )
-
-# Group 2: Economic Distress Variables
-df_group2 <- df_model %>%
-  select(
-    sq_PresDemRatio,
-    UnemploymentRate2020,
-    log_UnemploymentComp,
-    log_EicAmount,
-    NumEicReturns,
-    ChildTaxCredit,
-    OldAgeDependency,
-    ChildDependency,
-    log_BusinessNetIncome
-  )
+cat("Number of colunms before dropping some variables:", ncol(df5), "\n")
+cat("Number of colunms after dropping some variables:", ncol(df6), "\n")
 ```
 
 
 ```{r echo=FALSE}
-# ---------------- BEST SUBSETS: GROUP 1 ----------------
+# Run a preliminary model with ALL candidate predictors to identify high VIFs
+vif_model <- lm(sq_PresDemRatio ~ . - FIPS - CountyName -IsMetro, data = df6)
+vif_results <- vif(vif_model)
+vif_df <- data.frame(Variable = names(vif_results), VIF = as.numeric(vif_results)) %>%
+  arrange(desc(VIF))
+
+# ---------------- FILTERED PRINTING ----------------
+cat("Variables with VIF > 5 (Moderate Multicollinearity):\n")
+print(vif_df %>% filter(VIF > 5 & VIF <= 10))
+
+cat("Variables with VIF > 10 (SEVERELY Multicollinear - Must Prune):\n")
+print(vif_df %>% filter(VIF > 10))
+```
+
+Our VIF analysis shows extreme multicollinearity in the full model, particularly within the age, dependency, and economic distress blocks. A VIF of 414 or 349 means these variables are almost perfectly redundant, which will inflate our standard errors and make our coefficient estimates unstable, potentially invalidating our Extra Sum of Squares (ESS) test. Thus, we must prune these variables to create a stable Reduced Model. The goal is to keep only the most theoretically important variable from each redundant cluster.
+
+We will drop Pct65Plus (Redundant with sq_OldAgeDependency), MedianAge (Redundant with sq_OldAgeDependency), sq_ChildDependency (Redundant with sq_PropChildTax), sq_PctHsOnly (Redundant with sq_PctBachelors), sq_PctWhite (Redundant with diversity markers (zero-sum)), sq_PropChildTax, IsMetro.
+
+```{r echo=FALSE}
+# We remove the most redundant variables identified by the high VIFs
+df_final <- df6 %>%
+  select(
+    -Pct65Plus,           # Redundant with sq_OldAgeDependency
+    -MedianAge,           # Redundant with sq_OldAgeDependency
+    -sq_ChildDependency,  # Redundant with sq_PropChildTax
+    -sq_PctHsOnly,        # Redundant with sq_PctBachelors
+    -sq_PctWhite,         # Redundant with diversity markers (zero-sum)
+    -sq_PropChildTax ,    # Redundant with sq_PropEicAmount
+    -IsMetro              # Redundant with sq_PctUrban 
+  )
+
+cat("Number of colunms before dropping some variables:", ncol(df6), "\n")
+cat("Number of colunms after dropping some variables:", ncol(df_final), "\n")
+
+# rerun VIF check
+vif_model_v2 <- lm(sq_PresDemRatio ~ . - FIPS - CountyName, data = df_final)
+
+vif_v2_results <- vif(vif_model_v2)
+
+# Print results to ensure they are now mostly < 10
+print("Check vifs again to ensure most are < 10")
+vif_v2_df <- data.frame(Variable = names(vif_v2_results), VIF = as.numeric(vif_v2_results)) %>%
+  arrange(desc(VIF))
+
+print(vif_v2_df)
+```
+
+
+# 2. Best Subsets
+
+We will now run Best Subsets Regression on our dataset (excluding the economic distress block) to select variables for our Reduced Model.
+
+```{r echo=FALSE}
+df_reduced_candidates <- df_final %>%
+  select(
+    -UnemploymentRate2020,
+    -sq_PropUnemplComp,
+    -sq_PropEicAmount,
+    -sq_OldAgeDependency,
+    -PropSocSec,
+    -PropPensions
+  )
+```
+
+```{r echo=FALSE}
 fit_g1 <- regsubsets(
-  sq_PresDemRatio ~ .,
-  data   = df_group1,
+  sq_PresDemRatio ~ . -FIPS -CountyName,
+  data   = df_reduced_candidates,
   nvmax  = 20,
   method = "seqrep"
 )
@@ -506,8 +524,7 @@ best_models_g1 <- data.frame(
   s_g1$which
 ) %>% arrange(desc(AdjR2))
 
-cat("=== GROUP 1: Prosperity & Demographics ===\n")
-head(best_models_g1, 10)
+# head(best_models_g1, 10)
 
 best_n_g1 <- which.max(s_g1$adjr2)
 cat("Best model size (Adj R2):", best_n_g1, "variables\n")
@@ -521,71 +538,33 @@ plot(s_g1$adjr2, type = "b",
 points(best_n_g1, max(s_g1$adjr2), col = "red", pch = 16, cex = 1.5)
 
 plot(fit_g1, scale = "adjr2",
-     main = "Group 1: Variable Inclusion",
+     main = "Variables Selection for Reduced Model",
      cex.axis = 0.55)
 
 # Selected variables
 vars_g1 <- names(coef(fit_g1, best_n_g1))[-1]
-cat("Selected from Group 1:\n")
+cat("Selected from the data:\n")
 print(vars_g1)
 ```
 
-```{r}
-# ---------------- BEST SUBSETS: GROUP 2 ----------------
-fit_g2 <- regsubsets(
-  sq_PresDemRatio ~ .,
-  data   = df_group2,
-  nvmax  = 10,
-  method = "seqrep"
-)
+## 3. Reduced Model
 
-s_g2 <- summary(fit_g2)
+We will now make a reduced model **without interaction terms** first.
 
-best_models_g2 <- data.frame(
-  NumVars = 1:length(s_g2$adjr2),
-  AdjR2   = round(s_g2$adjr2, 4),
-  s_g2$which
-) %>% arrange(desc(AdjR2))
+```{r echo=FALSE}
+lm_reduced1 <- lm(sq_PresDemRatio ~ 
+    PctMale + Pct18_34 + PropCapitalGains + PropPartnership + 
+    PropMortgage + AvgWage + MigrationRate2020 + log_TotalAgi + 
+    sq_PropSalaries + sq_PropCharity + sq_PropTaxLiability + sq_PctBachelors + 
+    sq_PctBlack + sq_PctHispanic + sq_PctAsian + sq_PctUrban + 
+    sq_DeathRate + ihs_PropBusiness, data=df_final
+    )
 
-cat("\n=== GROUP 2: Economic Distress ===\n")
-head(best_models_g2, 10)
+cat("--- REDUCED MODEL WITHOUT INTERACTION SUMMARY --- \n")
+summary(lm_reduced1)
 
-best_n_g2 <- which.max(s_g2$adjr2)
-cat("Best model size (Adj R2):", best_n_g2, "variables\n")
-cat("Best Adj R2:", round(max(s_g2$adjr2), 4), "\n")
-
-# Plot
-plot(s_g2$adjr2, type = "b",
-     xlab = "Number of Variables",
-     ylab = "Adjusted R2",
-     main = "Group 2 — Adjusted R2")
-points(best_n_g2, max(s_g2$adjr2), col = "red", pch = 16, cex = 1.5)
-
-plot(fit_g2, scale = "adjr2",
-     main = "Group 2: Variable Inclusion",
-     cex.axis = 0.55)
-
-# Selected variables
-vars_g2 <- names(coef(fit_g2, best_n_g2))[-1]
-cat("Selected from Group 2:\n")
-print(vars_g2)
-```
-
-```{r}
-# ---------------- REDUCED MODEL (GROUP 1 ONLY) ----------------
-reduced_formula <- as.formula(
-  paste("sq_PresDemRatio ~", paste(vars_g1, collapse = " + "))
-)
-
-lm_reduced <- lm(reduced_formula, data = df_model)
-
-# ---------------- RESIDUAL DIAGNOSTICS ----------------
-
-cat("\n=== REDUCED MODEL SUMMARY ===\n")
-summary(lm_reduced)
-
-par(mfrow = c(1, 1))
-plot(lm_reduced)
+par(mfrow = c(2, 2))
+plot(lm_reduced1)
 par(mfrow = c(1, 1))
 
 # # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
@@ -603,20 +582,147 @@ par(mfrow = c(1, 1))
 # }
 ```
 
+We will now test which interaction terms can be important.
+
 ```{r echo=FALSE}
-# ---------------- FIT BEST MODEL ----------------
-# TODO
-# ---------------- RESIDUAL DIAGNOSTICS ----------------
-# TODO
-# # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
-# for (v in vars_best) {
-#   plot(df_model[[v]], lm_best$residuals,
-#        xlab = v,
-#        ylab = "Residuals",
-#        main = paste("Residuals vs", v),
-#        pch  = 16, cex = 0.5,
-#        col  = adjustcolor("steelblue", alpha.f = 0.5))
-#   abline(h = 0, col = "red", lty = 2)
-# }
+lm_reduced2 <- lm(
+  sq_PresDemRatio ~ 
+    (PctMale + Pct18_34 + PropCapitalGains + PropPartnership + 
+     PropMortgage + AvgWage + MigrationRate2020 + log_TotalAgi + 
+     sq_PropSalaries + sq_PropCharity + sq_PropTaxLiability + 
+     sq_PctBachelors + sq_PctBlack + sq_PctHispanic + 
+     sq_PctAsian + sq_PctUrban + sq_DeathRate + 
+     ihs_PropBusiness)^2,
+  data = df_final
+)
+
+tidy_reduced <- tidy(lm_reduced2)
+
+# ---------------- TOP 10 INTERACTIONS ----------------
+top_interactions <- tidy_reduced %>%
+  filter(grepl(":", term)) %>%      # interactions only
+  filter(p.value < 0.001) %>%       # strong significance
+  arrange(p.value) %>%              # smallest p-values first
+  slice(1:10)                       # KEEP ONLY TOP 10
+
+cat("\n--- TOP 10 INTERACTION TERMS ---\n")
+print(top_interactions)
+
+# ---------------- MAIN EFFECTS ----------------
+significant_main <- tidy_reduced %>%
+  filter(!grepl(":", term)) %>%
+  filter(term != "(Intercept)") %>%
+  filter(p.value < 0.05) %>%
+  arrange(p.value)
+
+cat("\n--- SIGNIFICANT MAIN EFFECTS ---\n")
+print(significant_main)
+
+# ---------------- BUILD FINAL TERM LIST ----------------
+selected_terms <- c(
+  significant_main$term,
+  top_interactions$term
+)
+
+# ---------------- FINAL REDUCED MODEL ----------------
+formula_reduced_final <- as.formula(
+  paste(
+    "sq_PresDemRatio ~",
+    paste(selected_terms, collapse = " + ")
+  )
+)
+
+lm_reduced_final <- lm(formula_reduced_final, data = df_final)
+
+cat("\n--- FINAL REDUCED MODEL SUMMARY ---\n")
+summary(lm_reduced_final)
+par(mfrow = c(2, 2))
+plot(lm_reduced_final)
+par(mfrow = c(1, 1))
 ```
+
+In the Residuals vs Fitted plot, observation 2636 is an extreme outlier. Let's investigate this.
+
+```{r echo=FALSE}
+df_final[2636,]
+```
+
+Loving County was identified as an influential observation with high leverage and large residual values in diagnostic plots. From online research, it is the least populous county in the United States, with a 2020 census population of 64. Due to its extremely small population and atypical predictor values, it was removed to improve model stability and satisfy regression assumptions. Thus, we run our final Reduced Model again.
+
+```{r echo=FALSE}
+df_final_2 <- df_final[-2636,]
+lm_reduced3 <- lm(
+  sq_PresDemRatio ~ 
+    (PctMale + Pct18_34 + PropCapitalGains + PropPartnership + 
+     PropMortgage + AvgWage + MigrationRate2020 + log_TotalAgi + 
+     sq_PropSalaries + sq_PropCharity + sq_PropTaxLiability + 
+     sq_PctBachelors + sq_PctBlack + sq_PctHispanic + 
+     sq_PctAsian + sq_PctUrban + sq_DeathRate + 
+     ihs_PropBusiness)^2,
+  data = df_final_2
+)
+
+tidy_reduced <- tidy(lm_reduced2)
+
+# ---------------- TOP 10 INTERACTIONS ----------------
+top_interactions <- tidy_reduced %>%
+  filter(grepl(":", term)) %>%      # interactions only
+  filter(p.value < 0.001) %>%       # strong significance
+  arrange(p.value) %>%              # smallest p-values first
+  slice(1:10)                       # KEEP ONLY TOP 10
+
+# ---------------- MAIN EFFECTS ----------------
+significant_main <- tidy_reduced %>%
+  filter(!grepl(":", term)) %>%
+  filter(term != "(Intercept)") %>%
+  filter(p.value < 0.05) %>%
+  arrange(p.value)
+
+# ---------------- BUILD FINAL TERM LIST ----------------
+selected_terms <- c(
+  significant_main$term,
+  top_interactions$term
+)
+
+# ---------------- FINAL REDUCED MODEL ----------------
+formula_reduced_final <- as.formula(
+  paste(
+    "sq_PresDemRatio ~",
+    paste(selected_terms, collapse = " + ")
+  )
+)
+
+lm_reduced_final <- lm(formula_reduced_final, data = df_final_2)
+
+cat("\n--- FINAL REDUCED MODEL SUMMARY ---\n")
+summary(lm_reduced_final)
+par(mfrow = c(2, 2))
+plot(lm_reduced_final)
+par(mfrow = c(1, 1))
+
+cat("Number of counties in the model:", nrow(df_final_2), "\n")
+```
+
+After removal of the influential outlier, diagnostic plots indicate that the 
+assumptions of linearity, constant variance, normality, and absence of 
+undue influence are reasonably satisfied. Minor deviations from normality 
+remain in the upper tail, but these are not severe given the large sample size.
+
+Adjusted $R^2 = 0.6804$
+F-statistic p-value $< 2.2e-16$
+Residual standard error $= 0.0776$
+
+Thus, the model explains about 68% of variation in the response, which is strong for county-level social data.
+
+## Full Model
+
+(Need to get approval from Professor Kuiper first before building the Full Model and doing ESS)
+
+Now that we have our the Reduced Model. We can build our Full Model.
+
+## Extra Sum of Squares Test
+
+
+## Conclusion
+
 
