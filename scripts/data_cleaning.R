@@ -302,10 +302,27 @@ FinalData <- VotingData2020Clean %>%
   
   # calculate proportions
   mutate(
-    PropSalaries = SalariesWages / TotalAgi,
-    AvgWage      = SalariesWages / NumTaxReturns,
-    PropBusiness = BusinessNetIncome / TotalAgi,
-    AvgBusiness  = BusinessNetIncome / NumTaxReturns
+    # Prosperity Block: Measures of affluence and investment-based wealth
+    PropCapitalGains = CapitalGains / TotalAgi,
+    PropPartnership  = PartnershipIncome / TotalAgi,
+    PropMortgage     = MortgageInterest / TotalAgi,
+    PropCharity      = CharitableContributions / TotalAgi,
+    PropTaxLiability = TotalTaxLiability / TotalAgi,
+    PropSalaries     = SalariesWages / TotalAgi,
+    AvgWage          = SalariesWages / NumTaxReturns,
+    PropBusiness     = BusinessNetIncome / TotalAgi,
+    AvgBusiness      = BusinessNetIncome / NumTaxReturns,
+    
+    # Economic Distress Block: Markers of financial vulnerability and dependency
+    PropUnemplComp = UnemploymentComp / TotalAgi,
+    PropSocSec = SocialSecurityBenefits / TotalAgi,
+    PropPensions = PensionsAnnuities / TotalAgi,
+    PropEicAmount = EicAmount / TotalAgi,
+    PropEicReturns = NumEicReturns / NumTaxReturns,
+    PropChildTax = ChildTaxCredit / TotalAgi,
+    
+    # Migration rate normalized per 1,000 residents
+    MigrationRate2020 = (NetMigration2020 / CensusPop2020) * 1000
   )
   
 write_csv(FinalData, "./data/clean/FINAL_DATA.csv")
