@@ -22,7 +22,9 @@ library(reshape2)
 library(car)
 ```
 
-# Read in Data
+# Overview
+
+## About our Data
 
 ```{r message = FALSE, warning = FALSE, echo = FALSE}
 url <- "https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/clean/FINAL_DATA.csv"
@@ -40,6 +42,25 @@ cat("Original data's nubmer of rows:", nrow(df), "\n")
 cat("Original data's nubmer of columns:", ncol(df), "\n")
 ```
 
+## Abstract
+
+In this analysis, we are interested in exploring if the **Economic distress markers:**
+
+- Unemployment Rate (UnemploymentRate2020)
+
+- Reliance on unemployment compensation (PropUnemplComp)
+
+- Breadth and intensity of low-income household prevalence (PropEicReturns and PropEicAmount)
+
+- Financial support dependency for families with children (PropChildTax)
+
+- Elderly and aging population burdens (OldAgeDependency, PropSocSec, and PropPensions)
+
+to provide unique explanatory power beyond traditional demographic, education, and prosperity indicators to significantly improve the prediction of the **proportion of Democrat votes in 2020 presidential election (PresDemRatio)**.
+
+This investigation, rooted in the use of an Extra Sum of Squares test, seeks to determine if these specific indicators of community "stress" reduce model error and offer insights that general income levels alone cannot capture. 
+
+Following the background research of Autor et al. (2020) and Gelman (2008), we aim to see if these localized economic conditions drive a measurable shift in county-level political identity.
 
 # 1. Data Transformation
 
@@ -66,17 +87,22 @@ The distribution of the square-root transformed one is not perfect but is defini
 
 ```{r echo=FALSE}
 # Apply sqrt transformation to response
-df$sq_PresDemRatio <- sqrt(df$PresDemRatio)
+df1 <- df %>%
+  mutate(sq_PresDemRatio = sqrt(PresDemRatio)) %>%
+  relocate(sq_PresDemRatio) %>%
+  select(-PresDemRatio)
 ```
 
 
 ## 1.2 Exploratory Variable
 
-### 1.2.1 Check for Missing Data
+### 1.2.1 Remove Missing Data and Uninterested Columns
+
+We first check for NAs to remove columns with a lot of NAs.
 
 ```{r echo=FALSE}
 # ---------------- MISSING DATA ----------------
-missing_summary <- df %>%
+missing_summary <- df1 %>%
   summarise(across(everything(), ~ sum(is.na(.)))) %>%
   pivot_longer(everything(), names_to = "Variable", values_to = "Missing") %>%
   mutate(
@@ -86,25 +112,57 @@ missing_summary <- df %>%
   arrange(desc(Missing))
 
 print(missing_summary)
-
-# remove rows with NAs
-df1 <- df %>%
-  drop_na()
-cat("Number of rows before removing rows with NAs:", nrow(df), "\n")
-cat("Number of rows after removing rows with NAs:", nrow(df1), "\n")
 ```
 
-None of our variables have more than 0.5% of missing data so we do not have to exclude any variables (remove no columns).
+None of our variables have more than 0.5% of missing data so we do not have to exclude any variables (remove no columns). However, the data includes both raw counts and some proportions and we would be more interested in the proportions than raw counts to reduce multicollinearity later on. We want to keep TotalAgi but that is the only raw count we are keeping.
+
+```{r echo=FALSE}
+df2 <- df1 %>%
+  select(
+    # remove raw dollar counts because they have proportion or average counterparts
+    -SalariesWages, 
+    -BusinessNetIncome, 
+    -CapitalGains, 
+    -PensionsAnnuities, 
+    -UnemploymentComp, 
+    -SocialSecurityBenefits, 
+    -PartnershipIncome, 
+    -MortgageInterest, 
+    -CharitableContributions, 
+    -TotalTaxLiability, 
+    -EicAmount,
+    -ChildTaxCredit,
+    
+    # remove raw head counts because they have proportion counterparts
+    -NumEicReturns,
+    -NetMigration2020,
+    -CensusPop2020,
+    -NumTaxReturns
+  )
+cat("Number of columns before removing raw counts:", ncol(df1), "\n")
+cat("Number of rows after removing raw counts:", ncol(df2), "\n")
+```
+
+Then we remove rows with NAs.
+
+```{r echo=FALSE}
+# remove rows with NAs
+df3 <- df2 %>%
+  drop_na()
+cat("Number of rows before removing rows with NAs:", nrow(df2), "\n")
+cat("Number of rows after removing rows with NAs:", nrow(df3), "\n")
+```
+
 
 ### 1.2.2 Outliers
 
 ```{r echo=FALSE}
 # Prep data
-df_out <- df %>%
+df_out <- df3 %>%
   select(-FIPS, -CountyName) %>%
   drop_na()
 
-response   <- "PresDemRatio"
+response   <- "sq_PresDemRatio"
 predictors <- setdiff(names(df_out), response)
 
 # Create a list to store plots
@@ -150,8 +208,6 @@ wrap_plots(plot_list[19:27], ncol = 3, nrow = 3) +
   plot_annotation(title = "Outlier Detection 3")
 wrap_plots(plot_list[28:36], ncol = 3, nrow = 3) +
   plot_annotation(title = "Outlier Detection 4")
-wrap_plots(plot_list[37:39], ncol = 1, nrow = 3) +
-  plot_annotation(title = "Outlier Detection 5")
 ```
 
 Cook's Distance (Cook, 1977) is used here as the primary outlier detection method because it measures the influence of each observation on the fitted regression coefficients which is directly relevant to our goal of building a regression model. Unlike distributional methods such as IQR or Z-score outlier detection, which only flagged observations based on a single variable's distribution, Cook's D identifies observations whose removal would substantially change the estimated relationship between a predictor and the response variable (Belsley, Kuh & Welsch, 1980). The standard threshold of 4/n (Cook & Weisberg, 1982) is applied, where n is the number of complete observations for each predictor-response pair. Although the outliers are identified, we don't remove them without good reasons.
@@ -161,7 +217,7 @@ Cook's Distance (Cook, 1977) is used here as the primary outlier detection metho
 ```{r echo=FALSE}
 # Remove categorical/binary variables before computing correlation
 df_corr <- df_out %>%
-  select(-IsMetro, -PresDemRatio) %>%
+  select(-IsMetro) %>%
   select(where(is.numeric))
 
 corrplot(cor(df_corr),
@@ -169,39 +225,71 @@ corrplot(cor(df_corr),
          mar     = c(0, 0, 1, 0),
          tl.cex  = 0.5)
 ```
+**Strong positive correlation:** The Democratic vote share is strongly positively correlated with education (PctBachelors), diversity (PctBlack, PctAsian, PctHispanic), and urbanization (PctUrban). Higher gross income (TotalAgi), proportion of income on mortgage interest (PropMortgage), average wages (AvgWage), tax liability (PropTaxLiability), unemployment compensation (PropUnemplComp), and charitable giving (PropCharity) are also positively correlated with sq_PresDemRatio. 
 
-The correlation matrix shows that all income and tax dollar-amount variables (NumTaxReturns through ChildTaxCredit) form a near-perfectly correlated block, the age variables (MedianAge, Pct65Plus, OldAgeDependency, ChildDependency) cluster together, and the education variables (PctNoHs through PctBachelors) are moderately intercorrelated. Since our initial analysis goal is strong predictive rather than inferential, we will not address multicollinearity and instead allow the best subsets selection procedure to identify the combination of variables that best predicts PresDemRatio. Multicollinearity will be addressed formally in part **1.2.4**. 
+**Strong negative correlation:** There is a clear negative correlation with the white population percentage (PctWhite), high school only education (PctHsOnly), child dependency (ChildDependency), old age dependency (OldAgeDependency) and social security reliance (PropSocSec).
+
+**Correlation with Voting:** Interestingly, several "stress" markers like PropEicReturns (breadth of poverty) show a negative correlation with sq_PresDemRatio. This aligns with the background research by Autor et al. (2020) cited in our proposal, which found that economic decline sometimes correlates with a shift toward Republican candidates rather than Democratic ones.
+
+**Multicollinearity:** The matrix highlights several clusters where variables are so highly correlated that they are likely redundant:
+
+- **Economic distress:** There are very large blue circles between PropEicAmount, PropEicReturns, and PropChildTax. This confirms that these variables are measuring similar aspects of community distress. Because they are so highly correlated, including all of them in a single model will likely trigger the high VIFs which will be addressed formally in part **1.2.4**. 
+
+- **Education:** PctBachelors is strongly negatively correlated with PctNoHs and PctHsOnly. We will likely pick only one (PctBachelors) to represent education levels in our Reduced Model to avoid multicollinearity.
+
+- **Age:** There is extreme correlation between MedianAge, Pct65Plus, and OldAgeDependency. We will use Best Subsets Regression later to determine which single age-related variable is the most efficient predictor.
+
+- **Race:** PctWhite has prominent red circles at its intersections with PctBlack, PctHispanic, and PctAsian. This is expected in a closed system where these variables represent parts of a whole (100% of the population). We will Likely select PctWhite (as a baseline) and PctBlack and PctAsian (as markers of diversity)—rather than using the entire set.
+
+- **Prosperity:** TotalAgi shows a positive relationship with AvgWage and PropCharity, but its correlation with the vote share is less pronounced than the "per-capita" or "proportion" versions. PropBusiness and AvgBusiness have strong correlation as well since they share the same numerator - we will likely just use PropBusiness because it aligns with our research into general prosperity.
 
 
 ```{r echo=FALSE}
-# ---------------- PAIRS PLOTS (GROUPED) ----------------
-# Group 1: Income / Economic
-pairs(df_out %>% select(PresDemRatio, TotalAgi, SalariesWages, PropSalaries, AvgWage, BusinessNetIncome,
-                    CapitalGains, UnemploymentComp, SocialSecurityBenefits),
-      main = "Income Variables vs Voting",
+# Group 1: General Prosperity and Affluence
+pairs(df_out %>% select(sq_PresDemRatio, TotalAgi, PropCapitalGains, PropPartnership, 
+                         PropMortgage, PropCharity, PropTaxLiability, PropSalaries, AvgWage),
+      main = "General Prosperity vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("steelblue", alpha.f = 0.4))
 
-# Group 2: Education & Demographics
-pairs(df_out %>% select(PresDemRatio, PctNoHs, PctHsOnly, PctSomeCollege,
-                    PctBachelors, PctWhite, PctBlack, PctHispanic),
-      main = "Education & Race vs Voting",
+# Group 2: Economic Distress and Financial Vulnerability
+pairs(df_out %>% select(sq_PresDemRatio, UnemploymentRate2020, PropUnemplComp, 
+                         PropSocSec, PropPensions, PropEicAmount, PropEicReturns, PropChildTax),
+      main = "Economic Distress vs Voting",
+      pch = 16, cex = 0.3,
+      col = adjustcolor("firebrick", alpha.f = 0.4))
+
+# Group 3: Educational Attainment
+pairs(df_out %>% select(sq_PresDemRatio, PctNoHs, PctHsOnly, PctSomeCollege, PctBachelors),
+      main = "Education Levels vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("darkgreen", alpha.f = 0.4))
 
-# Group 3: Population & Age
-pairs(df_out %>% select(PresDemRatio, CensusPop2020, MedianAge, Pct18_34,
-                    Pct65Plus, AgeDependency),
-      main = "Population & Age vs Voting",
+# Group 4: Racial and Gender Demographics
+pairs(df_out %>% select(sq_PresDemRatio, PctWhite, PctBlack, PctAsian, PctHispanic, PctMale),
+      main = "Demographics vs Voting",
       pch = 16, cex = 0.3,
-      col = adjustcolor("purple", alpha.f = 0.4))
+      col = adjustcolor("darkorchid", alpha.f = 0.4))
 
-# Group 4: Taxes & Wealth
-pairs(df_out %>% select(PresDemRatio, TotalTaxLiability, MortgageInterest,
-                    CharitableContributions, EicAmount, NumEicReturns),
-      main = "Tax & Wealth vs Voting",
+# Group 5: Age and Dependency Ratios
+pairs(df_out %>% select(sq_PresDemRatio, MedianAge, Pct18_34, Pct65Plus, 
+                         AgeDependency, OldAgeDependency, ChildDependency),
+      main = "Age and Dependency vs Voting",
       pch = 16, cex = 0.3,
-      col = adjustcolor("firebrick", alpha.f = 0.4))
+      col = adjustcolor("darkorange", alpha.f = 0.4))
+
+# Group 6: Urbanization and Population Dynamics
+pairs(df_out %>% select(sq_PresDemRatio, PctUrban, IsMetro, BirthRate2020, 
+                         DeathRate2020, MigrationRate2020),
+      main = "Urbanization and Dynamics vs Voting",
+      pch = 16, cex = 0.3,
+      col = adjustcolor("dodgerblue", alpha.f = 0.4))
+
+# Group 7: Business and Self-Employment Income
+pairs(df_out %>% select(sq_PresDemRatio, PropBusiness, AvgBusiness),
+      main = "Business Income vs Voting",
+      pch = 16, cex = 0.3,
+      col = adjustcolor("goldenrod", alpha.f = 0.4))
 ```
 
 **Income Variables vs Voting:**
