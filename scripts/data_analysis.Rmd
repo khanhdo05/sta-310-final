@@ -411,7 +411,7 @@ sq_PctUrban still shows a spike at zero (representing entirely rural counties), 
 
 The IHS transformation (ihs_PropBusiness, ihs_AvgBusiness) successfully handled potential negative values while achieving a unimodal distribution.
 
-### 1.2.4 Mean-ccentering and Multicollinearity (VIF)
+### 1.2.4 Mean-centering and Multicollinearity (VIF)
 
 We will first **mean-center** all numeric variables subtracting their mean. We exclude the unique identifier (FIPS), the categorical urbanization marker (IsMetro), and the transformed response variable (sq_PresDemRatio).
 
@@ -565,19 +565,20 @@ par(mfrow = c(2, 2))
 plot(lm_reduced1)
 par(mfrow = c(1, 1))
 
-# # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
-# model_df <- model.frame(lm_reduced)
-# res <- residuals(lm_reduced)
-# for (v in vars_g1) {
-#   plot(model_df[[v]], res,
-#        xlab = v,
-#        ylab = "Residuals",
-#        main = paste("Residuals vs", v),
-#        pch  = 16, cex = 0.5,
-#        col  = adjustcolor("steelblue", alpha.f = 0.5))
-#   
-#   abline(h = 0, col = "red", lty = 2)
-# }
+# ---------------- RESIDUALS VS EACH PREDICTOR ----------------
+model_df <- model.frame(lm_reduced1)
+res <- residuals(lm_reduced1)
+par(mfrow = c(ceiling(length(vars_plt) / 4), 4), mar = c(3, 3, 2, 1))
+for (v in vars_g1) {
+  plot(model_df[[v]], res,
+       xlab = v,
+       ylab = "Residuals",
+       main = paste("Residuals vs", v),
+       pch  = 16, cex = 0.5,
+       col  = adjustcolor("steelblue", alpha.f = 0.5))
+  abline(h = 0, col = "red", lty = 2)
+}
+par(mfrow = c(1, 1))
 ```
 
 We will now test which interaction terms can be important.
@@ -637,6 +638,36 @@ summary(lm_reduced_final)
 par(mfrow = c(2, 2))
 plot(lm_reduced_final)
 par(mfrow = c(1, 1))
+
+# ---------------- RESIDUALS VS EACH PREDICTOR ----------------
+mf_final  <- model.frame(lm_reduced_final)
+res_final <- residuals(lm_reduced_final)
+
+# Split main effects and interactions
+main_terms <- selected_terms[!grepl(":", selected_terms)]
+inter_terms <- selected_terms[grepl(":", selected_terms)]
+
+# Build values for all terms
+term_vals <- lapply(selected_terms, function(term) {
+  if (grepl(":", term)) {
+    parts <- strsplit(term, ":")[[1]]
+    mf_final[[parts[1]]] * mf_final[[parts[2]]]
+  } else {
+    mf_final[[term]]
+  }
+})
+names(term_vals) <- selected_terms
+
+par(mfrow = c(ceiling(length(vars_plt) / 4), 4), mar = c(3, 3, 2, 1))
+for (v in selected_terms) {
+  plot(term_vals[[v]], res_final,
+       xlab = v, ylab = "Residuals",
+       main = paste("Residuals vs", v),
+       pch = 16, cex = 0.5, cex.main = 0.6,
+       col = adjustcolor("steelblue", alpha.f = 0.5))
+  abline(h = 0, col = "red", lty = 2)
+}
+par(mfrow = c(1, 1))
 ```
 
 In the Residuals vs Fitted plot, observation 2636 is an extreme outlier. Let's investigate this.
@@ -645,10 +676,18 @@ In the Residuals vs Fitted plot, observation 2636 is an extreme outlier. Let's i
 df_final[2636,]
 ```
 
-Loving County was identified as an influential observation with high leverage and large residual values in diagnostic plots. From online research, it is the least populous county in the United States, with a 2020 census population of 64. Due to its extremely small population and atypical predictor values, it was removed to improve model stability and satisfy regression assumptions. Thus, we run our final Reduced Model again.
+Loving County was identified as an influential observation with high leverage and large residual values in diagnostic plots. From online research, it is the least populous county in the United States, with a 2020 census population of 64. Due to its extremely small population and atypical predictor values, Loving County and Kalawao County of 82 population was removed to improve model stability and satisfy regression assumptions. Thus, we run our final Reduced Model again.
 
 ```{r echo=FALSE}
-df_final_2 <- df_final[-2636,]
+# Remove counties with CensusPop2020 < 100 from the df
+small_counties <- df %>% filter(CensusPop2020 < 100) %>% select(FIPS, CountyName, CensusPop2020)
+df_final_2 <- df_final %>% filter(!FIPS %in% small_counties$FIPS)
+cat("Counties removed:\n")
+print(small_counties)
+cat("Counties remaining:", nrow(df_final_2), "\n")
+```
+
+```{r echo=FALSE}
 lm_reduced3 <- lm(
   sq_PresDemRatio ~ 
     (PctMale + Pct18_34 + PropCapitalGains + PropPartnership + 
@@ -699,6 +738,31 @@ plot(lm_reduced_final)
 par(mfrow = c(1, 1))
 
 cat("Number of counties in the model:", nrow(df_final_2), "\n")
+
+# ---------------- RESIDUALS VS EACH PREDICTOR ----------------
+mf_final  <- model.frame(lm_reduced_final)
+res_final <- residuals(lm_reduced_final)
+
+term_vals <- lapply(selected_terms, function(term) {
+  if (grepl(":", term)) {
+    parts <- strsplit(term, ":")[[1]]
+    mf_final[[parts[1]]] * mf_final[[parts[2]]]
+  } else {
+    mf_final[[term]]
+  }
+})
+names(term_vals) <- selected_terms
+
+par(mfrow = c(ceiling(length(vars_plt) / 4), 4), mar = c(3, 3, 2, 1))
+for (v in selected_terms) {
+  plot(term_vals[[v]], res_final,
+       xlab = v, ylab = "Residuals",
+       main = paste("Residuals vs", v),
+       pch = 16, cex = 0.5, cex.main = 0.6,
+       col = adjustcolor("steelblue", alpha.f = 0.5))
+  abline(h = 0, col = "red", lty = 2)
+}
+par(mfrow = c(1, 1))
 ```
 
 After removal of the influential outlier, diagnostic plots indicate that the 
