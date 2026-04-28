@@ -546,7 +546,7 @@ cat("Selected from the data:\n")
 print(vars_g1)
 ```
 
-## 3. Reduced Model
+# 3. Reduced Model
 
 We will now make a reduced model **without interaction terms** first.
 
@@ -568,7 +568,7 @@ par(mfrow = c(1, 1))
 # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
 model_df <- model.frame(lm_reduced1)
 res <- residuals(lm_reduced1)
-par(mfrow = c(ceiling(length(vars_plt) / 4), 4), mar = c(3, 3, 2, 1))
+par(mfrow = c(ceiling(length(vars_g1) / 4), 4), mar = c(3, 3, 2, 1))
 for (v in vars_g1) {
   plot(model_df[[v]], res,
        xlab = v,
@@ -658,7 +658,7 @@ term_vals <- lapply(selected_terms, function(term) {
 })
 names(term_vals) <- selected_terms
 
-par(mfrow = c(ceiling(length(vars_plt) / 4), 4), mar = c(3, 3, 2, 1))
+par(mfrow = c(ceiling(12 / 4), 4), mar = c(3, 3, 2, 1))
 for (v in selected_terms) {
   plot(term_vals[[v]], res_final,
        xlab = v, ylab = "Residuals",
@@ -676,7 +676,7 @@ In the Residuals vs Fitted plot, observation 2636 is an extreme outlier. Let's i
 df_final[2636,]
 ```
 
-Loving County was identified as an influential observation with high leverage and large residual values in diagnostic plots. From online research, it is the least populous county in the United States, with a 2020 census population of 64. Due to its extremely small population and atypical predictor values, Loving County and Kalawao County of 82 population was removed to improve model stability and satisfy regression assumptions. Thus, we run our final Reduced Model again.
+Loving County was identified as an influential observation with high leverage and large residual values in diagnostic plots. It is the least populous county in the United States, with a 2020 census population of 64.  Due to its extremely small population and atypical predictor values, Loving County and Kalawao County of 82 population was removed to improve model stability and satisfy regression assumptions. 
 
 ```{r echo=FALSE}
 # Remove counties with CensusPop2020 < 100 from the df
@@ -686,6 +686,8 @@ cat("Counties removed:\n")
 print(small_counties)
 cat("Counties remaining:", nrow(df_final_2), "\n")
 ```
+
+Thus, we run our final Reduced Model again.
 
 ```{r echo=FALSE}
 lm_reduced3 <- lm(
@@ -753,7 +755,7 @@ term_vals <- lapply(selected_terms, function(term) {
 })
 names(term_vals) <- selected_terms
 
-par(mfrow = c(ceiling(length(vars_plt) / 4), 4), mar = c(3, 3, 2, 1))
+par(mfrow = c(ceiling(12 / 4), 4), mar = c(3, 3, 2, 1))
 for (v in selected_terms) {
   plot(term_vals[[v]], res_final,
        xlab = v, ylab = "Residuals",
@@ -765,10 +767,7 @@ for (v in selected_terms) {
 par(mfrow = c(1, 1))
 ```
 
-After removal of the influential outlier, diagnostic plots indicate that the 
-assumptions of linearity, constant variance, normality, and absence of 
-undue influence are reasonably satisfied. Minor deviations from normality 
-remain in the upper tail, but these are not severe given the large sample size. Even though $R^2$ decreases, the removal is necessary to prevent our model from treating the extreme behaviors of 64 people as being as statistically significant as the trends seen in counties with millions of residents.
+After removal of the influential outlier, diagnostic plots indicate that the assumptions of linearity, constant variance, normality, and absence of undue influence are reasonably satisfied. Minor deviations from normality remain in the upper tail, but these are not severe given the large sample size. Even though $R^2$ decreases, it was a very small decrease (from 0.6711 to 0.667), the removal is necessary to prevent our model from treating the extreme behaviors of < 90 people as being as statistically significant as the trends seen in counties with millions of residents.
 
 **Reduced Model Summary:**
 
