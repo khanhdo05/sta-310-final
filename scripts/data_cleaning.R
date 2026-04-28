@@ -3,6 +3,7 @@ library(tidyverse)
 library(tidycensus)
 library(tigris)
 library(sf)
+library(readxl)
 
 # -------------------- READ IN DATA ------------------------------
 VotingData <- read_csv("https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/raw/38506-0001-Data.csv", show_col_types = FALSE)
@@ -216,16 +217,18 @@ msa_lookup <- core_based_statistical_areas(year = 2020, cb = TRUE) %>%
 # Create the IsMetroCounty Flag
 # If a county belongs to an MSA (Metropolitan Statistical Area), it's 1. 
 # Micropolitan areas or non-CBSA counties are 0.
-MetroData2020Clean <- st_join(all_counties, msa_lookup, join = st_intersects) %>%
-  # Counties that match a metropolitan area will receive the data from the metro table
-  # Counties that do not match will have a NA (missing value) in the GEOID.y column because 
-  # they were not found in the metropolitan dataset.
-  mutate(IsMetro = if_else(!is.na(GEOID.y), 1, 0)) %>%
-  # Clean up and select the FIPS and the flag
-  mutate(FIPS = as.character(as.numeric(GEOID.x))) %>%
+MetroData2020Clean <- read_excel(
+  "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/list1_2023.xlsx",
+  skip = 2
+) %>%
+  filter(`Metropolitan Division Title` != "" | `CBSA Title` != "") %>%
+  mutate(FIPS = paste0(
+    str_pad(`FIPS State Code`, 2, pad = "0"),
+    str_pad(`FIPS County Code`, 3, pad = "0")
+  )) %>%
+  mutate(IsMetro = if_else(`Metropolitan/Micropolitan Statistical Area` == "Metropolitan Statistical Area", 1L, 0L)) %>%
   select(FIPS, IsMetro) %>%
-  st_drop_geometry() %>%
-  as_tibble()
+  mutate(FIPS = as.character(as.numeric(FIPS)))
 
 # -------------------- WRITE TO TABLE --------------------------
 write_csv(VotingData2020Clean, "./data/clean/VotingData2020.csv")
