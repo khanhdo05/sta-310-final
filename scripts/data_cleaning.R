@@ -202,31 +202,21 @@ AgeData2020Clean <- get_acs(
          AgeDependency, OldAgeDependency, ChildDependency)
 
 # ----------------- CLEAN METRO DATA ------------------------
-# Retrieve all US counties from the Census TIGER API
-# Use 'cb = TRUE' for the generalized (smaller) map files.
-all_counties <- counties(year = 2020, cb = TRUE) %>% 
-  st_as_sf()
-
-# Retrieve the CBSA (Metro/Micro) relationship data
-# Identifies which counties are part of a Core Based Statistical Area.
-msa_lookup <- core_based_statistical_areas(year = 2020, cb = TRUE) %>%
-  st_as_sf() %>%
-  # Filter specifically for 'Metropolitan'
-  filter(str_detect(NAMELSAD, "Metropolitan"))
-
-# Create the IsMetroCounty Flag
-# If a county belongs to an MSA (Metropolitan Statistical Area), it's 1. 
-# Micropolitan areas or non-CBSA counties are 0.
-MetroData2020Clean <- read_excel(
+temp <- tempfile(fileext = ".xlsx")
+download.file(
   "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/list1_2023.xlsx",
-  skip = 2
-) %>%
-  filter(`Metropolitan Division Title` != "" | `CBSA Title` != "") %>%
+  destfile = temp,
+  mode = "wb"
+)
+
+MetroData2020Clean <- read_excel(temp, skip = 2) %>%
   mutate(FIPS = paste0(
     str_pad(`FIPS State Code`, 2, pad = "0"),
     str_pad(`FIPS County Code`, 3, pad = "0")
   )) %>%
-  mutate(IsMetro = if_else(`Metropolitan/Micropolitan Statistical Area` == "Metropolitan Statistical Area", 1L, 0L)) %>%
+  mutate(IsMetro = if_else(
+    `Metropolitan/Micropolitan Statistical Area` == "Metropolitan Statistical Area", 1L, 0L
+  )) %>%
   select(FIPS, IsMetro) %>%
   mutate(FIPS = as.character(as.numeric(FIPS)))
 
