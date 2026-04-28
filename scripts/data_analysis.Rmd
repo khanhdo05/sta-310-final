@@ -445,7 +445,7 @@ cat("Number of colunms after dropping some variables:", ncol(df6), "\n")
 
 ```{r echo=FALSE}
 # Run a preliminary model with ALL candidate predictors to identify high VIFs
-vif_model <- lm(sq_PresDemRatio ~ . - FIPS - CountyName -IsMetro, data = df6)
+vif_model <- lm(sq_PresDemRatio ~ . - FIPS - CountyName, data = df6)
 vif_results <- vif(vif_model)
 vif_df <- data.frame(Variable = names(vif_results), VIF = as.numeric(vif_results)) %>%
   arrange(desc(VIF))
@@ -460,7 +460,7 @@ print(vif_df %>% filter(VIF > 10))
 
 Our VIF analysis shows extreme multicollinearity in the full model, particularly within the age, dependency, and economic distress blocks. A VIF of 414 or 349 means these variables are almost perfectly redundant, which will inflate our standard errors and make our coefficient estimates unstable, potentially invalidating our Extra Sum of Squares (ESS) test. Thus, we must prune these variables to create a stable Reduced Model. The goal is to keep only the most theoretically important variable from each redundant cluster.
 
-We will drop Pct65Plus (Redundant with sq_OldAgeDependency), MedianAge (Redundant with sq_OldAgeDependency), sq_ChildDependency (Redundant with sq_PropChildTax), sq_PctHsOnly (Redundant with sq_PctBachelors), sq_PctWhite (Redundant with diversity markers (zero-sum)), sq_PropChildTax, IsMetro.
+We will drop Pct65Plus (Redundant with sq_OldAgeDependency), MedianAge (Redundant with sq_OldAgeDependency), sq_ChildDependency (Redundant with sq_PropChildTax), sq_PctHsOnly (Redundant with sq_PctBachelors), sq_PctWhite (Redundant with diversity markers (zero-sum)), sq_PropChildTax.
 
 ```{r echo=FALSE}
 # We remove the most redundant variables identified by the high VIFs
@@ -471,8 +471,7 @@ df_final <- df6 %>%
     -sq_ChildDependency,  # Redundant with sq_PropChildTax
     -sq_PctHsOnly,        # Redundant with sq_PctBachelors
     -sq_PctWhite,         # Redundant with diversity markers (zero-sum)
-    -sq_PropChildTax ,    # Redundant with sq_PropEicAmount
-    -IsMetro              # Redundant with sq_PctUrban 
+    -sq_PropChildTax      # Redundant with sq_PropEicAmount
   )
 
 cat("Number of colunms before dropping some variables:", ncol(df6), "\n")
@@ -557,8 +556,7 @@ lm_reduced1 <- lm(sq_PresDemRatio ~
     PropMortgage + AvgWage + MigrationRate2020 + log_TotalAgi + 
     sq_PropSalaries + sq_PropCharity + sq_PropTaxLiability + sq_PctBachelors + 
     sq_PctBlack + sq_PctHispanic + sq_PctAsian + sq_PctUrban + 
-    sq_DeathRate + ihs_PropBusiness, data=df_final
-    )
+    sq_DeathRate + ihs_PropBusiness + IsMetro, data=df_final)
 
 cat("--- REDUCED MODEL WITHOUT INTERACTION SUMMARY --- \n")
 summary(lm_reduced1)
@@ -592,7 +590,7 @@ lm_reduced2 <- lm(
      sq_PropSalaries + sq_PropCharity + sq_PropTaxLiability + 
      sq_PctBachelors + sq_PctBlack + sq_PctHispanic + 
      sq_PctAsian + sq_PctUrban + sq_DeathRate + 
-     ihs_PropBusiness)^2,
+     ihs_PropBusiness + IsMetro)^2,
   data = df_final
 )
 
@@ -658,11 +656,11 @@ lm_reduced3 <- lm(
      sq_PropSalaries + sq_PropCharity + sq_PropTaxLiability + 
      sq_PctBachelors + sq_PctBlack + sq_PctHispanic + 
      sq_PctAsian + sq_PctUrban + sq_DeathRate + 
-     ihs_PropBusiness)^2,
+     ihs_PropBusiness + IsMetro)^2,
   data = df_final_2
 )
 
-tidy_reduced <- tidy(lm_reduced2)
+tidy_reduced <- tidy(lm_reduced3)
 
 # ---------------- TOP 10 INTERACTIONS ----------------
 top_interactions <- tidy_reduced %>%
@@ -706,13 +704,15 @@ cat("Number of counties in the model:", nrow(df_final_2), "\n")
 After removal of the influential outlier, diagnostic plots indicate that the 
 assumptions of linearity, constant variance, normality, and absence of 
 undue influence are reasonably satisfied. Minor deviations from normality 
-remain in the upper tail, but these are not severe given the large sample size.
+remain in the upper tail, but these are not severe given the large sample size. Even though $R^2$ decreases, the removal is necessary to prevent our model from treating the extreme behaviors of 64 people as being as statistically significant as the trends seen in counties with millions of residents.
 
-Adjusted $R^2 = 0.6804$
+**Reduced Model Summary:**
+
+Adjusted $R^2 = 0.667$
 F-statistic p-value $< 2.2e-16$
 Residual standard error $= 0.0776$
 
-Thus, the model explains about 68% of variation in the response, which is strong for county-level social data.
+Thus, the model explains about 67% of variation in the response, which is strong for county-level social data.
 
 ## Full Model
 
