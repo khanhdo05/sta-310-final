@@ -106,10 +106,10 @@ EducationData201923Clean <- EducationData %>%
   # rename cols
   rename(FIPS = `FIPS Code`) %>%
   rename(
-    PCT_NO_HS    = `Percent of adults who are not high school graduates, 2019-23`,
-    PCT_HS_ONLY  = `Percent of adults who are high school graduates (or equivalent), 2019-23`,
-    PCT_SOME_COL = `Percent of adults completing some college or associate degree, 2019-23`,
-    PCT_BACH     = `Percent of adults with a bachelor's degree or higher, 2019-23`
+    PctNoHS        = `Percent of adults who are not high school graduates, 2019-23`,
+    PctHSOnly      = `Percent of adults who are high school graduates (or equivalent), 2019-23`,
+    PctSomeCollege = `Percent of adults completing some college or associate degree, 2019-23`,
+    PctBachelors   = `Percent of adults with a bachelor's degree or higher, 2019-23`
   ) %>%
   
   # drop cols
@@ -140,8 +140,8 @@ PopulationData2020Clean <- PopulationData %>%
   select(-State, -Area_Name) %>%
   mutate(
     # we're interested in rates, not raw counts
-    R_BIRTH_2020 = BIRTHS_2020 / CENSUS_2020_POP * 1000,
-    R_DEATH_2020 = DEATHS_2020 / CENSUS_2020_POP * 1000
+    BirthRate2020 = BIRTHS_2020 / CENSUS_2020_POP * 1000,
+    DeathRate2020 = DEATHS_2020 / CENSUS_2020_POP * 1000
   ) %>%
   select(-BIRTHS_2020, -DEATHS_2020)
 
@@ -177,15 +177,15 @@ DemographicData2020Clean <- get_decennial(
 
 # 2020 acs census - age data at county level
 age_vars <- c(
-  MedianAge         = "S0101_C01_032E", # Median age (years)
-  AgeDependency     = "S0101_C01_033E", # Age dependency ratio
-  ChildDependency   = "S0101_C01_034E", # Child dependency ratio
-  OldAgeDependency  = "S0101_C01_035E", # Old-age dependency ratio
-  Pct65Plus         = "S0101_C02_030E", # Percent 65 years and over
+  MedianAge            = "S0101_C01_032E", # Median age (years)
+  SeniorAndYouthBurden = "S0101_C01_033E", # Age dependency ratio
+  YouthBurden          = "S0101_C01_034E", # Child dependency ratio
+  SeniorBurden         = "S0101_C01_035E", # Old-age dependency ratio
+  Pct65Plus            = "S0101_C02_030E", # Percent 65 years and over
   # Brackets for 18-34 (20-34 + portion of 15-19)
-  Pct20_24          = "S0101_C02_006E",
-  Pct25_29          = "S0101_C02_007E",
-  Pct30_34          = "S0101_C02_008E"
+  Pct20_24             = "S0101_C02_006E",
+  Pct25_29             = "S0101_C02_007E",
+  Pct30_34             = "S0101_C02_008E"
 )
 
 AgeData2020Clean <- get_acs(
@@ -199,17 +199,17 @@ AgeData2020Clean <- get_acs(
   mutate(Pct18_34 = Pct20_24 + Pct25_29 + Pct30_34) %>%
   mutate(FIPS = as.character(as.numeric(GEOID))) %>%
   select(FIPS, MedianAge, Pct18_34, Pct65Plus, 
-         AgeDependency, OldAgeDependency, ChildDependency)
+         SeniorAndYouthBurden, YouthBurden, SeniorBurden)
 
 # ----------------- CLEAN METRO DATA ------------------------
 temp <- tempfile(fileext = ".xlsx")
 download.file(
   "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/list1_2023.xlsx",
-  destfile = temp,
+  destfile = temp,       
   mode = "wb"
 )
 
-MetroData2020Clean <- read_excel(temp, skip = 2) %>%
+MetroData2020Clean <- read_excel(temp, skip = 2) %>%                                                                                                                                                                                                                                 
   mutate(FIPS = paste0(
     str_pad(`FIPS State Code`, 2, pad = "0"),
     str_pad(`FIPS County Code`, 3, pad = "0")
@@ -252,7 +252,7 @@ FinalData <- VotingData2020Clean %>%
     
     # Income / Tax Variables
     NumTaxReturns         = N1,
-    TotalAgi              = A00100,
+    TotalGrossIncome      = A00100,
     SalariesWages         = A00200,
     BusinessNetIncome     = A00900,
     CapitalGains          = A01000,
@@ -263,24 +263,16 @@ FinalData <- VotingData2020Clean %>%
     MortgageInterest      = A19300,
     CharitableContributions= A19700,
     TotalTaxLiability     = A10300,
-    EicAmount             = A59660,
-    NumEicReturns         = N59660,
+    EICAmount             = A59660,
+    NumEICReturns         = N59660,
     ChildTaxCredit        = A11070,
     
     # Unemployment
     UnemploymentRate2020  = Unemployment_rate_2020,
     
-    # Education
-    PctNoHs               = PCT_NO_HS,
-    PctHsOnly             = PCT_HS_ONLY,
-    PctSomeCollege        = PCT_SOME_COL,
-    PctBachelors          = PCT_BACH,
-    
     # Population
     CensusPop2020         = CENSUS_2020_POP,
     NetMigration2020      = NET_MIG_2020,
-    BirthRate2020         = R_BIRTH_2020,
-    DeathRate2020         = R_DEATH_2020
   ) %>%
   
   # remove 46113 because it has been changed to Oglala Lakota County (46102)
@@ -296,23 +288,23 @@ FinalData <- VotingData2020Clean %>%
   # calculate proportions
   mutate(
     # Prosperity Block: Measures of affluence and investment-based wealth
-    PropCapitalGains = CapitalGains / TotalAgi,
-    PropPartnership  = PartnershipIncome / TotalAgi,
-    PropMortgage     = MortgageInterest / TotalAgi,
-    PropCharity      = CharitableContributions / TotalAgi,
-    PropTaxLiability = TotalTaxLiability / TotalAgi,
-    PropSalaries     = SalariesWages / TotalAgi,
+    PropCapitalGains = CapitalGains / TotalGrossIncome,
+    PropPartnership  = PartnershipIncome / TotalGrossIncome,
+    PropMortgage     = MortgageInterest / TotalGrossIncome,
+    PropCharity      = CharitableContributions / TotalGrossIncome,
+    PropTaxLiability = TotalTaxLiability / TotalGrossIncome,
+    PropSalaries     = SalariesWages / TotalGrossIncome,
     AvgWage          = SalariesWages / NumTaxReturns,
-    PropBusiness     = BusinessNetIncome / TotalAgi,
+    PropBusiness     = BusinessNetIncome / TotalGrossIncome,
     AvgBusiness      = BusinessNetIncome / NumTaxReturns,
     
     # Economic Distress Block: Markers of financial vulnerability and dependency
-    PropUnemplComp = UnemploymentComp / TotalAgi,
-    PropSocSec = SocialSecurityBenefits / TotalAgi,
-    PropPensions = PensionsAnnuities / TotalAgi,
-    PropEicAmount = EicAmount / TotalAgi,
-    PropEicReturns = NumEicReturns / NumTaxReturns,
-    PropChildTax = ChildTaxCredit / TotalAgi,
+    PropUnemplComp = UnemploymentComp / TotalGrossIncome,
+    PropSocSec = SocialSecurityBenefits / TotalGrossIncome,
+    PropPensions = PensionsAnnuities / TotalGrossIncome,
+    PropEICAmount = EICAmount / TotalGrossIncome,
+    PropEICReturns = NumEICReturns / NumTaxReturns,
+    PropChildTax = ChildTaxCredit / TotalGrossIncome,
     
     # Migration rate normalized per 1,000 residents
     MigrationRate2020 = (NetMigration2020 / CensusPop2020) * 1000

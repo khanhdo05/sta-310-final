@@ -1,5 +1,5 @@
 ---
-title: "An Extra Sum of Stress: Does Economic Distress Predict Democratic Support Beyond General Prosperity and Demographic Composition?"
+title: "An Extra Sum of Stress: Does Economic Distress Drives Counties to Support the Democratic Party?"
 author: "Khanh Do, Maral Bat-Erdene"
 date: "`r Sys.Date()`"
 output: pdf_document
@@ -51,9 +51,11 @@ In this analysis, we are interested in exploring if the **Economic distress mark
 
 - Reliance on unemployment compensation (PropUnemplComp)
 
-- Breadth and intensity of low-income household prevalence (PropEicReturns and PropEicAmount)
+- Intensity of low-income household prevalence (PropEICReturns)
 
-- Elderly and aging population burdens (OldAgeDependency, PropSocSec, and PropPensions)
+- Children burdens (PropChildTax)
+
+- Elderly and aging population burdens (SeniorBurden, PropSocSec, and PropPensions)
 
 to provide unique explanatory power beyond traditional demographic, education, and prosperity indicators to significantly improve the prediction of the **proportion of Democrat votes in 2020 presidential election (PresDemRatio)**.
 
@@ -113,7 +115,7 @@ missing_summary <- df1 %>%
 print(missing_summary)
 ```
 
-None of our variables have more than 0.5% of missing data so we do not have to exclude any variables (remove no columns). However, the data includes both raw counts and some proportions and we would be more interested in the proportions than raw counts to reduce multicollinearity later on. We want to keep TotalAgi but that is the only raw count we are keeping.
+None of our variables have more than 0.5% of missing data so we do not have to exclude any variables (remove no columns). However, the data includes both raw counts and some proportions and we would be more interested in the proportions than raw counts to reduce multicollinearity later on. We want to keep TotalGrossIncome but that is the only raw count we are keeping. We will also drop SeniorAndYouthBurden because together with SeniorBurden and YouthBurden they make up a perfect 1.0.
 
 ```{r echo=FALSE}
 df2 <- df1 %>%
@@ -129,14 +131,20 @@ df2 <- df1 %>%
     -MortgageInterest, 
     -CharitableContributions, 
     -TotalTaxLiability, 
-    -EicAmount,
+    -EICAmount,
     -ChildTaxCredit,
     
     # remove raw head counts because they have proportion counterparts
-    -NumEicReturns,
+    -NumEICReturns,
     -NetMigration2020,
     -CensusPop2020,
-    -NumTaxReturns
+    -NumTaxReturns,
+    
+    # remove perfect multicollinearity
+    -SeniorAndYouthBurden
+    
+    # remove economic distress markers that is explained by another economic distress
+    -PropEICReturns
   )
 cat("Number of columns before removing raw counts:", ncol(df1), "\n")
 cat("Number of rows after removing raw counts:", ncol(df2), "\n")
@@ -224,55 +232,63 @@ corrplot(cor(df_corr),
          mar     = c(0, 0, 1, 0),
          tl.cex  = 0.5)
 ```
-**Strong positive correlation:** The Democratic vote share is strongly positively correlated with education (PctBachelors), diversity (PctBlack, PctAsian, PctHispanic), and urbanization (PctUrban). Higher gross income (TotalAgi), proportion of income on mortgage interest (PropMortgage), average wages (AvgWage), tax liability (PropTaxLiability), unemployment compensation (PropUnemplComp), and charitable giving (PropCharity) are also positively correlated with sq_PresDemRatio. 
+**Strong positive correlation:** The Democratic vote share is strongly positively correlated with education (PctBachelors), diversity (PctBlack, PctAsian, PctHispanic), and urbanization (PctUrban). Higher gross income (TotalGrossIncome), proportion of income on mortgage interest (PropMortgage), average wages (AvgWage), tax liability (PropTaxLiability), unemployment compensation (PropUnemplComp), and charitable giving (PropCharity) are also positively correlated with sq_PresDemRatio. 
 
-**Strong negative correlation:** There is a clear negative correlation with the white population percentage (PctWhite), high school only education (PctHsOnly), child dependency (ChildDependency), old age dependency (OldAgeDependency) and social security reliance (PropSocSec).
+**Strong negative correlation:** There is a clear negative correlation with the white population percentage (PctWhite), high school only education (PctHSOnly), child dependency (YouthBurden), old age dependency (SeniorBurden) and social security reliance (PropSocSec).
 
-**Correlation with Voting:** Interestingly, several "stress" markers like PropEicReturns (breadth of poverty) show a negative correlation with sq_PresDemRatio. This aligns with the background research by Autor et al. (2020) cited in our proposal, which found that economic decline sometimes correlates with a shift toward Republican candidates rather than Democratic ones.
+**Correlation with Voting:** Interestingly, several "stress" markers like PropEICReturns (breadth of poverty) show a negative correlation with sq_PresDemRatio. This aligns with the background research by Autor et al. (2020) cited in our proposal, which found that economic decline sometimes correlates with a shift toward Republican candidates rather than Democratic ones.
 
 **Multicollinearity:** The matrix highlights several clusters where variables are so highly correlated that they are likely redundant:
 
-- **Economic distress:** There are very large blue circles between PropEicAmount, PropEicReturns, and PropChildTax. This confirms that these variables are measuring similar aspects of community distress. Because they are so highly correlated, including all of them in a single model will likely trigger the high VIFs which will be addressed formally in part **1.2.4**. 
+- **Economic distress:** There are very large blue circles between PropEICAmount, PropEICReturns, and PropChildTax. This confirms that these variables are measuring similar aspects of community distress. Because they are so highly correlated, including all of them in a single model will likely trigger the high VIFs which will be addressed formally in part **1.2.4**. 
 
-- **Education:** PctBachelors is strongly negatively correlated with PctNoHs and PctHsOnly. We will likely pick only one (PctBachelors) to represent education levels in our Reduced Model to avoid multicollinearity.
+- **Education:** PctBachelors is strongly negatively correlated with PctNoHS and PctHSOnly. We will likely pick only one (PctBachelors) to represent education levels in our Reduced Model to avoid multicollinearity.
 
-- **Age:** There is extreme correlation between MedianAge, Pct65Plus, and OldAgeDependency. We will use Best Subsets Regression later to determine which single age-related variable is the most efficient predictor.
+- **Age:** There is extreme correlation between MedianAge, Pct65Plus, and SeniorBurden. We will use Best Subsets Regression later to determine which single age-related variable is the most efficient predictor.
 
 - **Race:** PctWhite has prominent red circles at its intersections with PctBlack, PctHispanic, and PctAsian. This is expected in a closed system where these variables represent parts of a whole (100% of the population). We will Likely select PctWhite (as a baseline) and PctBlack and PctAsian (as markers of diversity)—rather than using the entire set.
 
-- **Prosperity:** TotalAgi shows a positive relationship with AvgWage and PropCharity, but its correlation with the vote share is less pronounced than the "per-capita" or "proportion" versions. PropBusiness and AvgBusiness have strong correlation as well since they share the same numerator - we will likely just use PropBusiness because it aligns with our research into general prosperity.
+- **Prosperity:** TotalGrossIncome shows a positive relationship with AvgWage and PropCharity, but its correlation with the vote share is less pronounced than the "per-capita" or "proportion" versions. PropBusiness and AvgBusiness have strong correlation as well since they share the same numerator - we will likely just use PropBusiness because it aligns with our research into general prosperity.
 
 ```{r echo=FALSE}
 # Group 1: General Prosperity and Affluence
-pairs(df3 %>% select(sq_PresDemRatio, TotalAgi, PropCapitalGains, PropPartnership, 
+pairs(df3 %>% select(sq_PresDemRatio, TotalGrossIncome, PropCapitalGains, PropPartnership, 
                          PropMortgage, PropCharity, PropTaxLiability, PropSalaries, AvgWage),
       main = "General Prosperity vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("steelblue", alpha.f = 0.4))
 ```
 
-**Group 1: General Prosperity and Affluence:** This group shows a strong "scale problem" where raw totals like TotalAgi are heavily skewed and highly correlated with each other. However, when normalized, markers like AvgWage and PropCharity show a positive correlation with the Democratic vote share, illustrating the "prosperity paradox" where wealthier counties often lean left. **Transformation Needed**: Log transformation for TotalAgi to handle extreme right-skewness and square root for prosperity ratios (like PropSalaries) to stabilize variance.
+**Group 1: General Prosperity and Affluence:** This group shows a strong "scale problem" where raw totals like TotalGrossIncome are heavily skewed and highly correlated with each other. However, when normalized, markers like AvgWage and PropCharity show a positive correlation with the Democratic vote share, illustrating the "prosperity paradox" where wealthier counties often lean left. **Transformation Needed**: Log transformation for TotalGrossIncome to handle extreme right-skewness and square root for prosperity ratios (like PropSalaries) to stabilize variance.
 
 ```{r echo=FALSE}
 # Group 2: Economic Distress and Financial Vulnerability
 pairs(df3 %>% select(sq_PresDemRatio, UnemploymentRate2020, PropUnemplComp, 
-                         PropSocSec, PropPensions, PropEicAmount, PropEicReturns, PropChildTax),
+                     PropSocSec, PropPensions, PropEICAmount, PropEICReturns),
       main = "Economic Distress vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("firebrick", alpha.f = 0.4))
 ```
 
-**Group 2: Economic Distress and Financial Vulnerability:** There is significant internal redundancy among EIC-related variables and child tax credits. Interestingly, many markers of "stress" like PropEicReturns show a negative correlation with sq_PresDemRatio in these plots, suggesting that economic decline in certain areas may correlate with a move away from Democratic support. **Transformation Needed:** Square root for these ratios to handle mild skewness and boundary effects.
+```{r echo=FALSE}
+# Group 2: Economic Distress and Financial Vulnerability
+pairs(df3 %>% select(sq_PresDemRatio, PropChildTax, SeniorAndYouthBurden, SeniorBurden, YouthBurden),
+      main = "Economic Distress vs Voting",
+      pch = 16, cex = 0.3,
+      col = adjustcolor("firebrick", alpha.f = 0.4))
+```
+
+**Group 2: Economic Distress and Financial Vulnerability:** There is significant internal redundancy among EIC-related variables and child tax credits. Interestingly, many markers of "stress" like PropEICReturns show a negative correlation with sq_PresDemRatio in these plots, suggesting that economic decline in certain areas may correlate with a move away from Democratic support. **Transformation Needed:** Square root for these ratios to handle mild skewness and boundary effects.
 
 ```{r echo=FALSE}
 # Group 3: Educational Attainment
-pairs(df3 %>% select(sq_PresDemRatio, PctNoHs, PctHsOnly, PctSomeCollege, PctBachelors),
+pairs(df3 %>% select(sq_PresDemRatio, PctNoHS, PctHSOnly, PctSomeCollege, PctBachelors),
       main = "Education Levels vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("darkgreen", alpha.f = 0.4))
 ```
 
-**Group 3: Educational Attainment:** PctBachelors is one of the strongest positive predictors for Democratic support. The matrix reveals high multicollinearity within this group, particularly a strong negative relationship between PctBachelors and lower education levels like PctHsOnly. **Transformation Needed:** Square root for these percentages to ensure they meet the linearity assumptions of the regression model.
+**Group 3: Educational Attainment:** PctBachelors is one of the strongest positive predictors for Democratic support. The matrix reveals high multicollinearity within this group, particularly a strong negative relationship between PctBachelors and lower education levels like PctHSOnly. **Transformation Needed:** Square root for these percentages to ensure they meet the linearity assumptions of the regression model.
 
 ```{r echo=FALSE}
 # Group 4: Racial and Gender Demographics
@@ -286,14 +302,13 @@ pairs(df3 %>% select(sq_PresDemRatio, PctWhite, PctBlack, PctAsian, PctHispanic,
 
 ```{r echo=FALSE}
 # Group 5: Age and Dependency Ratios
-pairs(df3 %>% select(sq_PresDemRatio, MedianAge, Pct18_34, Pct65Plus, 
-                         AgeDependency, OldAgeDependency, ChildDependency),
+pairs(df3 %>% select(sq_PresDemRatio, MedianAge, Pct18_34, Pct65Plus),
       main = "Age and Dependency vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("darkorange", alpha.f = 0.4))
 ```
 
-**Group 5: Age and Dependency Ratios:** There is a massive "super-cluster" of multicollinearity between MedianAge, Pct65Plus, and OldAgeDependency. These variables are virtually redundant, and the plots show that older counties generally correlate with lower Democratic vote shares. **Transformation Needed:** Square root for dependency ratios to stabilize the variance of these calculated proportions.
+**Group 5: Age and Dependency Ratios:** There is a massive "super-cluster" of multicollinearity between MedianAge, Pct65Plus, and SeniorBurden. These variables are virtually redundant, and the plots show that older counties generally correlate with lower Democratic vote shares. **Transformation Needed:** Square root for dependency ratios to stabilize the variance of these calculated proportions.
 
 ```{r echo=FALSE}
 # Group 6: Urbanization and Population Dynamics
@@ -321,21 +336,21 @@ pairs(df3 %>% select(sq_PresDemRatio, PropBusiness, AvgBusiness),
 df4 <- df3 %>%
   mutate(
     # group 1
-    log_TotalAgi = log1p(TotalAgi),
+    log_TotalAgi = log1p(TotalGrossIncome),
     sq_PropSalaries = sqrt(PropSalaries),
     sq_PropCharity = sqrt(PropCharity),
     sq_PropTaxLiability = sqrt(PropTaxLiability),
     
     # group 2
     sq_PropUnemplComp = sqrt(PropUnemplComp),
-    sq_PropEicAmount = sqrt(PropEicAmount),
-    sq_PropEicReturns = sqrt(PropEicReturns),
+    sq_PropEICAmount = sqrt(PropEICAmount),
+    sq_PropEICReturns = sqrt(PropEICReturns),
     sq_PropChildTax = sqrt(PropChildTax),
     
     # group 3
     sq_PctBachelors = sqrt(PctBachelors),
-    sq_PctNoHs = sqrt(PctNoHs),
-    sq_PctHsOnly = sqrt(PctHsOnly),
+    sq_PctNoHs = sqrt(PctNoHS),
+    sq_PctHsOnly = sqrt(PctHSOnly),
     
     # group 4
     sq_PctWhite = sqrt(PctWhite),
@@ -344,9 +359,9 @@ df4 <- df3 %>%
     sq_PctAsian = sqrt(PctAsian),
     
     # group 5
-    sq_OldAgeDependency = sqrt(OldAgeDependency),
-    sq_ChildDependency = sqrt(ChildDependency),
-    sq_AgeDependency = sqrt(AgeDependency),
+    sq_OldAgeDependency = sqrt(SeniorBurden),
+    sq_ChildDependency = sqrt(YouthBurden),
+    sq_AgeDependency = sqrt(SeniorAndYouthBurden),
     
     # group 6
     sq_PctUrban = sqrt(PctUrban),
@@ -359,11 +374,11 @@ df4 <- df3 %>%
   ) %>%
   # Drop original untransformed versions only, keep everything else
   select(
-    -TotalAgi, -PropSalaries, -PropCharity, -PropTaxLiability,
-    -PropUnemplComp, -PropEicAmount, -PropEicReturns, -PropChildTax,
-    -PctBachelors, -PctNoHs, -PctHsOnly,
+    -TotalGrossIncome, -PropSalaries, -PropCharity, -PropTaxLiability,
+    -PropUnemplComp, -PropEICAmount, -PropEICReturns, -PropChildTax,
+    -PctBachelors, -PctNoHS, -PctHSOnly,
     -PctWhite, -PctBlack, -PctHispanic, -PctAsian,
-    -OldAgeDependency, -ChildDependency, -AgeDependency,
+    -SeniorBurden, -YouthBurden, -SeniorAndYouthBurden,
     -PctUrban, -BirthRate2020, -DeathRate2020,
     -PropBusiness, -AvgBusiness
   )
@@ -372,7 +387,7 @@ df4 <- df3 %>%
 par(mfrow = c(6, 4), mar = c(2, 2, 2, 1))
 all_transformed_vars <- c(
   "log_TotalAgi", "sq_PropSalaries", "sq_PropCharity", "sq_PropTaxLiability",
-  "sq_PropUnemplComp", "sq_PropEicAmount", "sq_PropEicReturns", "sq_PropChildTax",
+  "sq_PropUnemplComp", "sq_PropEICAmount", "sq_PropEICReturns", "sq_PropChildTax",
   "sq_PctBachelors", "sq_PctNoHs", "sq_PctHsOnly",
   "sq_PctWhite", "sq_PctBlack", "sq_PctHispanic", "sq_PctAsian",
   "sq_OldAgeDependency", "sq_ChildDependency", "sq_AgeDependency",
@@ -403,7 +418,7 @@ cat("Number of rows now:", nrow(df2), "\n")
 
 log_TotalAgi is now roughly symmetric, correcting the extreme right-skew found in the raw income totals. Ratios such as sq_PropSalaries and sq_PropTaxLiability show significantly improved normality.
 
-The "stress" markers (e.g., sq_PropUnemplComp, sq_PropEicAmount, sq_PropEicReturns) are no longer heavily clustered at the zero-boundary, which will allow your model to more accurately estimate the impact of financial vulnerability.
+The "stress" markers (e.g., sq_PropUnemplComp, sq_PropEICAmount, sq_PropEICReturns) are no longer heavily clustered at the zero-boundary, which will allow your model to more accurately estimate the impact of financial vulnerability.
 
 Variables like sq_PctBachelors and the age dependency ratios (sq_OldAgeDependency, sq_AgeDependency) now appear nearly normal. However, sq_PctBlack, sq_PctAsian, and sq_PctHispanic still show a right-skew because many U.S. counties have very small minority populations; the square root has "pulled" these values out to make them more manageable, but they remain inherently skewed.
 
@@ -432,11 +447,11 @@ df5 %>%
 
 We then address the extreme redundancy seen in our Correlation Matrix through **VIFs**.
 
-AgeDependency is the combination of OldAgeDependency and ChildDependency. Including all three is a "perfect" alias that makes VIF calculation mathematically impossible so we drop sq_AgeDependency. Like we mentioned earlier, we will use PropBusiness instead of AvgBusiness so we will drop ihs_AvgBusiness. We will also drop sq_PctNoHs. sq_PropEicAmount and sq_PropEicReturns is nearly identical and we will drop PropEicReturns since we are more interested in the intensity of poverty, not depth.
+SeniorAndYouthBurden is the combination of SeniorBurden and YouthBurden. Including all three is a "perfect" alias that makes VIF calculation mathematically impossible so we drop sq_AgeDependency. Like we mentioned earlier, we will use PropBusiness instead of AvgBusiness so we will drop ihs_AvgBusiness. We will also drop sq_PctNoHs. sq_PropEICAmount and sq_PropEICReturns is nearly identical and we will drop PropEICReturns since we are more interested in the intensity of poverty, not depth.
 
 ```{r echo=FALSE}
 df6 <- df5 %>%
-  select(-sq_AgeDependency, -ihs_AvgBusiness, -sq_PctNoHs, -sq_PropEicReturns)
+  select(-sq_AgeDependency, -ihs_AvgBusiness, -sq_PctNoHs, -sq_PropEICReturns)
 
 cat("Number of colunms before dropping some variables:", ncol(df5), "\n")
 cat("Number of colunms after dropping some variables:", ncol(df6), "\n")
@@ -460,7 +475,7 @@ print(vif_df %>% filter(VIF > 10))
 
 Our VIF analysis shows extreme multicollinearity in the full model, particularly within the age, dependency, and economic distress blocks. A VIF of 414 or 349 means these variables are almost perfectly redundant, which will inflate our standard errors and make our coefficient estimates unstable, potentially invalidating our Extra Sum of Squares (ESS) test. Thus, we must prune these variables to create a stable Reduced Model. The goal is to keep only the most theoretically important variable from each redundant cluster.
 
-We will drop Pct65Plus (Redundant with sq_OldAgeDependency), MedianAge (Redundant with sq_OldAgeDependency), sq_ChildDependency (Redundant with sq_PropChildTax), sq_PctHsOnly (Redundant with sq_PctBachelors), sq_PctWhite (Redundant with diversity markers (zero-sum)), sq_PropChildTax.
+We will drop Pct65Plus (Redundant with sq_OldAgeDependency), MedianAge (Redundant with sq_OldAgeDependency), sq_ChildDependency (Redundant with sq_PropChildTax), sq_PctHsOnly (Redundant with sq_PctBachelors), sq_PctWhite (Redundant with diversity markers (zero-sum)).
 
 ```{r echo=FALSE}
 # We remove the most redundant variables identified by the high VIFs
@@ -471,7 +486,6 @@ df_final <- df6 %>%
     -sq_ChildDependency,  # Redundant with sq_PropChildTax
     -sq_PctHsOnly,        # Redundant with sq_PctBachelors
     -sq_PctWhite,         # Redundant with diversity markers (zero-sum)
-    -sq_PropChildTax      # Redundant with sq_PropEicAmount
   )
 
 cat("Number of colunms before dropping some variables:", ncol(df6), "\n")
@@ -500,8 +514,9 @@ df_reduced_candidates <- df_final %>%
   select(
     -UnemploymentRate2020,
     -sq_PropUnemplComp,
-    -sq_PropEicAmount,
+    -sq_PropEICAmount,
     -sq_OldAgeDependency,
+    -sq_PropChildTax
     -PropSocSec,
     -PropPensions
   )
