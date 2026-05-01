@@ -45,23 +45,27 @@ cat("Original data's nubmer of columns:", ncol(df), "\n")
 
 ## Abstract
 
-In this analysis, we are interested in exploring if the **Economic distress markers:**
+This analysis investigates whether **economic distress markers** provide meaningful explanatory power for predicting county-level Democratic presidential vote share in 2020, *beyond* what traditional demographic, education, and prosperity variables already capture.
 
-- Unemployment Rate (UnemploymentRate2020)
+Our economic distress block consists of seven indicators:
 
-- Reliance on unemployment compensation (PropUnemplComp)
+- **`UnemploymentRate2020`** — the raw percentage of the civilian labor force actively without work in 2020
 
-- Intensity of low-income household prevalence (PropEICReturns)
+- **`PropUnemplComp`** — unemployment compensation as a share of total gross income, measuring county-level reliance on government safety nets rather than active earnings
 
-- Children burdens (PropChildTax)
+- **`PropEICAmount`** — Earned Income Credit (EIC) amount as a share of total gross income, measuring the intensity of low-income household prevalence. The EIC is a federal refundable tax credit targeting low-to-moderate income working individuals and families; a high `PropEICAmount` signals a concentration of working-poor households.
 
-- Elderly and aging population burdens (SeniorBurden, PropSocSec, and PropPensions)
+- **`PropChildTax`** — Additional Child Tax Credit (ACTC) amount as a share of total gross income. The ACTC is a *refundable* credit available to low-income families with children who owe little to no federal tax. Counties with high `PropChildTax` relative to income reflect a concentration of working-poor families with children, making this a legitimate economic distress marker.
 
-to provide unique explanatory power beyond traditional demographic, education, and prosperity indicators to significantly improve the prediction of the **proportion of Democrat votes in 2020 presidential election (PresDemRatio)**.
+- **`SeniorBurden`** — the old-age dependency ratio: the share of the population aged 65+ relative to the working-age population (18–64). Counties with a large elderly population place a higher fiscal dependency load on a shrinking working-age tax base, stressing both county-level public finances and household income composition.
 
-This investigation, rooted in the use of an Extra Sum of Squares test, seeks to determine if these specific indicators of community "stress" reduce model error and offer insights that general income levels alone cannot capture. 
+- **`PropSocSec`** — Social Security benefits as a share of total gross income, serving as a proxy for elderly income dependency
 
-Following the background research of Autor et al. (2020) and Gelman (2008), we aim to see if these localized economic conditions drive a measurable shift in county-level political identity.
+- **`PropPensions`** — taxable pensions and annuities as a share of total gross income, a further indicator of retiree income reliance
+
+The investigation is rooted in an **Extra Sum of Squares (ESS) F-test**: we first build a Reduced Model (Model R) using traditional demographic, education, and prosperity predictors, then build a Full Model (Model F) by adding the economic distress block, and formally test whether the distress block significantly reduces model error.
+
+This approach follows Autor, Dorn, and Hanson (2020), who found that counties experiencing economic decline sometimes shift *away* from Democratic candidates, and Gelman (2008), who documented the complex relationship between income, geography, and partisan voting. We aim to determine whether localized economic stress offers measurable predictive power beyond general income levels.
 
 # 1. Data Transformation
 
@@ -84,7 +88,7 @@ hist(sqrt(df$PresDemRatio),
      col = "steelblue")
 ```
 
-The distribution of the square-root transformed one is not perfect but is definitely more bell-shape looking than that with log. Thus, we determine that our response variable needs a square-root transformation.
+The square-root transformation produces a substantially more symmetric, bell-shaped distribution and is applied to the response for all subsequent modeling.
 
 ```{r echo=FALSE}
 # Apply sqrt transformation to response
@@ -95,32 +99,18 @@ df1 <- df %>%
 ```
 
 
-## 1.2 Exploratory Variable
+## 1.2 Predictor Variables
 
-### 1.2.1 Remove Missing Data and Uninterested Columns
+### 1.2.1 Removing Structurally Redundant Columns
 
-We first check for NAs to remove columns with a lot of NAs.
+Before any analysis, we remove columns that are structurally incompatible with multiple regression for purely mathematical or scope reasons. These removals are *not* conceptual decisions about the economic distress block — they are necessary preprocessing.
 
-```{r echo=FALSE}
-# ---------------- MISSING DATA ----------------
-missing_summary <- df1 %>%
-  summarise(across(everything(), ~ sum(is.na(.)))) %>%
-  pivot_longer(everything(), names_to = "Variable", values_to = "Missing") %>%
-  mutate(
-    Total = nrow(df),
-    Pct_Missing = round(100 * Missing / Total, 1)
-  ) %>%
-  arrange(desc(Missing))
-
-print(missing_summary)
-```
-
-None of our variables have more than 0.5% of missing data so we do not have to exclude any variables (remove no columns). However, the data includes both raw counts and some proportions and we would be more interested in the proportions than raw counts to reduce multicollinearity later on. We want to keep TotalGrossIncome but that is the only raw count we are keeping. We will also drop SeniorAndYouthBurden because together with SeniorBurden and YouthBurden they make up a perfect 1.0.
+**Raw counts removed in favor of proportion/average counterparts** (to reduce scale-driven multicollinearity):
 
 ```{r echo=FALSE}
 df2 <- df1 %>%
   select(
-    # remove raw dollar counts because they have proportion or average counterparts
+    # Raw dollar counts — proportion or average counterparts are retained instead
     -SalariesWages, 
     -BusinessNetIncome, 
     -CapitalGains, 
@@ -134,34 +124,82 @@ df2 <- df1 %>%
     -EICAmount,
     -ChildTaxCredit,
     
-    # remove raw head counts because they have proportion counterparts
+    # Raw headcounts — proportion counterparts are retained instead
     -NumEICReturns,
     -NetMigration2020,
     -CensusPop2020,
     -NumTaxReturns,
     
-    # remove perfect multicollinearity
-    -SeniorAndYouthBurden
+    # Perfect linear combination: SeniorAndYouthBurden = SeniorBurden + YouthBurden
+    # Retaining both components and their sum would create a singular design matrix
+    -SeniorAndYouthBurden,
     
-    # remove economic distress markers that is explained by another economic distress
-    -PropEICReturns
+    # YouthBurden: child dependency is a demographic characteristic; our distress
+    # block focuses on senior/elderly fiscal dependency (SeniorBurden). Retaining
+    # both YouthBurden and SeniorBurden alongside their removed sum also risks
+    # near-perfect collinearity.
+    -YouthBurden
   )
-cat("Number of columns before removing raw counts:", ncol(df1), "\n")
-cat("Number of rows after removing raw counts:", ncol(df2), "\n")
+cat("Columns before removing structural redundancies:", ncol(df1), "\n")
+cat("Columns after removing structural redundancies:", ncol(df2), "\n")
 ```
 
-Then we remove rows with NAs.
+> **Note on `PropEICReturns`:** This variable (breadth of EIC claims — the *proportion* of filers claiming EIC) is conceptually related to economic distress and is retained at this stage. Its disposition relative to `PropEICAmount` (intensity of EIC claims) is addressed explicitly when we define the economic distress block in Section 1.2.4.
+
+### 1.2.2 Missing Data
+
+```{r missing-data, echo=FALSE}
+missing_summary <- df2 %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Missing") %>%
+  mutate(
+    Total       = nrow(df2),
+    Pct_Missing = round(100 * Missing / Total, 1)
+  ) %>%
+  arrange(desc(Missing))
+
+cat("Maximum % missing across all variables:",
+    max(missing_summary$Pct_Missing), "%\n")
+cat("Variables with any missing values:\n")
+print(missing_summary %>% filter(Missing > 0))
+```
+
+No variable exceeds 0.5% missing. We proceed by removing rows with any `NA` values.
 
 ```{r echo=FALSE}
 # remove rows with NAs
 df3 <- df2 %>%
   drop_na()
-cat("Number of rows before removing rows with NAs:", nrow(df2), "\n")
-cat("Number of rows after removing rows with NAs:", nrow(df3), "\n")
+
+cat("Rows before removing NAs:", nrow(df2), "\n")
+cat("Rows after removing NAs: ", nrow(df3), "\n")
+
+# Track sample size
+n_original  <- nrow(df)
+n_after_na  <- nrow(df3)
 ```
 
+### 1.2.3 Outlier Detection
 
-### 1.2.2 Outliers
+**Small Population:**
+
+Two counties with fewer than 100 residents — Loving County, TX (pop. 64) and Kalawao County, HI (pop. 82) — are removed prior to any modeling. With such small populations, all derived income proportion variables are computed from an extremely small base of tax filers, making them unreliable estimates of county-level economic conditions. This decision requires no model information and is made on data quality grounds alone.
+
+```{r echo=FALSE}
+small_counties <- df %>% 
+  filter(CensusPop2020 < 100) %>% 
+  select(FIPS, CountyName, CensusPop2020)
+
+cat("Counties removed (population < 100):\n")
+print(small_counties)
+
+df3 <- df3 %>% filter(!FIPS %in% small_counties$FIPS)
+n_after_small <- nrow(df2)
+```
+
+**Cook's Distance:**
+
+Cook's Distance (Cook, 1977) is used as the primary outlier detection method because it measures the influence of each observation on the fitted regression coefficients — directly relevant to our regression modeling goal. Unlike univariate methods (IQR, Z-score) that flag observations based on a single variable's distribution alone, Cook's D identifies observations whose removal would substantially change the estimated predictor–response relationship (Belsley, Kuh & Welsch, 1980). The threshold of $4/n$ (Cook & Weisberg, 1982) is applied, where $n$ is the number of complete observations. Outliers are flagged here for awareness; removal decisions are revisited after model fitting in Section 3.
 
 ```{r echo=FALSE}
 # Prep data
@@ -213,13 +251,13 @@ wrap_plots(plot_list[10:18], ncol = 3, nrow = 3) +
   plot_annotation(title = "Outlier Detection 2")
 wrap_plots(plot_list[19:27], ncol = 3, nrow = 3) +
   plot_annotation(title = "Outlier Detection 3")
-wrap_plots(plot_list[28:36], ncol = 3, nrow = 3) +
+wrap_plots(plot_list[28:35], ncol = 3, nrow = 3) +
   plot_annotation(title = "Outlier Detection 4")
 ```
 
-Cook's Distance (Cook, 1977) is used here as the primary outlier detection method because it measures the influence of each observation on the fitted regression coefficients which is directly relevant to our goal of building a regression model. Unlike distributional methods such as IQR or Z-score outlier detection, which only flagged observations based on a single variable's distribution, Cook's D identifies observations whose removal would substantially change the estimated relationship between a predictor and the response variable (Belsley, Kuh & Welsch, 1980). The standard threshold of 4/n (Cook & Weisberg, 1982) is applied, where n is the number of complete observations for each predictor-response pair. Although the outliers are identified, we don't remove them without good reasons.
+### 1.2.4 Correlation Structure and Transformation Decisions
 
-### 1.2.3 Correlation Plots
+We examine the correlation matrix and pairwise scatterplots by thematic group to guide transformation choices and identify multicollinearity clusters.
 
 ```{r echo=FALSE}
 # Remove categorical/binary variables before computing correlation
@@ -227,58 +265,106 @@ df_corr <- df_out %>%
   select(-IsMetro) %>%
   select(where(is.numeric))
 
-corrplot(cor(df_corr),
-         title   = "Correlation Matrix",
+corrplot(cor(df_corr, use = "complete.obs"),
+         title   = "Correlation Matrix — All Numeric Predictors",
          mar     = c(0, 0, 1, 0),
          tl.cex  = 0.5)
 ```
-**Strong positive correlation:** The Democratic vote share is strongly positively correlated with education (PctBachelors), diversity (PctBlack, PctAsian, PctHispanic), and urbanization (PctUrban). Higher gross income (TotalGrossIncome), proportion of income on mortgage interest (PropMortgage), average wages (AvgWage), tax liability (PropTaxLiability), unemployment compensation (PropUnemplComp), and charitable giving (PropCharity) are also positively correlated with sq_PresDemRatio. 
 
-**Strong negative correlation:** There is a clear negative correlation with the white population percentage (PctWhite), high school only education (PctHSOnly), child dependency (YouthBurden), old age dependency (SeniorBurden) and social security reliance (PropSocSec).
+**Key observations:**
 
-**Correlation with Voting:** Interestingly, several "stress" markers like PropEICReturns (breadth of poverty) show a negative correlation with sq_PresDemRatio. This aligns with the background research by Autor et al. (2020) cited in our proposal, which found that economic decline sometimes correlates with a shift toward Republican candidates rather than Democratic ones.
+- **Positive correlates of Democratic vote share:** education (`PctBachelors`), racial diversity (`PctBlack`, `PctAsian`, `PctHispanic`), urbanization (`PctUrban`), average wages (`AvgWage`), mortgage reliance (`PropMortgage`), charitable giving (`PropCharity`), and tax liability proportion (`PropTaxLiability`).
+
+- **Negative correlates:** white population share (`PctWhite`), high school-only education (`PctHSOnly`), senior dependency (`SeniorBurden`), and Social Security reliance (`PropSocSec`).
+
+- **Distress markers and voting:** Several economic distress indicators — including `PropEICAmount` — show a *negative* correlation with Democratic vote share. This is consistent with Autor et al. (2020), who found that economic decline in certain communities correlates with movement *away* from Democratic candidates rather than toward them. This is precisely why an ESS test is warranted: the relationship is not straightforward.
 
 **Multicollinearity:** The matrix highlights several clusters where variables are so highly correlated that they are likely redundant:
 
-- **Economic distress:** There are very large blue circles between PropEICAmount, PropEICReturns, and PropChildTax. This confirms that these variables are measuring similar aspects of community distress. Because they are so highly correlated, including all of them in a single model will likely trigger the high VIFs which will be addressed formally in part **1.2.4**. 
+- **Economic distress:** There are very large blue circles between PropEICAmount, PropEICReturns and PropChildTax. SeniorBurden is also highly correlated with Pct65Plus and MedianAge so possible interaction might be needed in the full model. 
 
 - **Education:** PctBachelors is strongly negatively correlated with PctNoHS and PctHSOnly. We will likely pick only one (PctBachelors) to represent education levels in our Reduced Model to avoid multicollinearity.
 
-- **Age:** There is extreme correlation between MedianAge, Pct65Plus, and SeniorBurden. We will use Best Subsets Regression later to determine which single age-related variable is the most efficient predictor.
+- **Age:** There is extreme correlation between MedianAge and Pct65Plus. We will use Best Subsets Regression later to determine which single age-related variable is the most efficient predictor.
 
 - **Race:** PctWhite has prominent red circles at its intersections with PctBlack, PctHispanic, and PctAsian. This is expected in a closed system where these variables represent parts of a whole (100% of the population). We will Likely select PctWhite (as a baseline) and PctBlack and PctAsian (as markers of diversity)—rather than using the entire set.
 
 - **Prosperity:** TotalGrossIncome shows a positive relationship with AvgWage and PropCharity, but its correlation with the vote share is less pronounced than the "per-capita" or "proportion" versions. PropBusiness and AvgBusiness have strong correlation as well since they share the same numerator - we will likely just use PropBusiness because it aligns with our research into general prosperity.
 
+**Decision on `PropEICReturns` vs. `PropEICAmount`:**
+Both measure different dimensions of EIC-related economic distress: `PropEICReturns` captures the *breadth* of poverty (what share of filers claim EIC), while `PropEICAmount` captures the *intensity* (how much EIC is claimed relative to total income). Their correlation is `r round(cor(df3$PropEICReturns, df3$PropEICAmount, use = "complete.obs"), 3)`, indicating near-redundancy. For the economic distress block, we retain `PropEICAmount` (intensity) as the more theoretically meaningful indicator of the *depth* of financial vulnerability in a county, and exclude `PropEICReturns`.
+
+```{r drop-eic-returns, echo=FALSE}
+df3 <- df3 %>% select(-PropEICReturns)
+```
+
+#### Group-by-Group Pairwise Plots and Transformation Rationale
+
+**Group 1: General Prosperity and Affluence**
+
 ```{r echo=FALSE}
 # Group 1: General Prosperity and Affluence
 pairs(df3 %>% select(sq_PresDemRatio, TotalGrossIncome, PropCapitalGains, PropPartnership, 
-                         PropMortgage, PropCharity, PropTaxLiability, PropSalaries, AvgWage),
-      main = "General Prosperity vs Voting",
+                         PropMortgage, PropCharity),
+      main = "General Prosperity vs Voting 1",
       pch = 16, cex = 0.3,
       col = adjustcolor("steelblue", alpha.f = 0.4))
 ```
 
-**Group 1: General Prosperity and Affluence:** This group shows a strong "scale problem" where raw totals like TotalGrossIncome are heavily skewed and highly correlated with each other. However, when normalized, markers like AvgWage and PropCharity show a positive correlation with the Democratic vote share, illustrating the "prosperity paradox" where wealthier counties often lean left. **Transformation Needed**: Log transformation for TotalGrossIncome to handle extreme right-skewness and square root for prosperity ratios (like PropSalaries) to stabilize variance.
+```{r echo=FALSE}
+# Group 1: General Prosperity and Affluence
+pairs(df3 %>% select(sq_PresDemRatio, PropTaxLiability, PropSalaries, AvgWage, PropBusiness, AvgBusiness),
+      main = "General Prosperity vs Voting 2",
+      pch = 16, cex = 0.3,
+      col = adjustcolor("steelblue", alpha.f = 0.4))
+```
+
+Raw income totals (`TotalGrossIncome`) are heavily right-skewed and span multiple orders of magnitude → **log transformation**. 
+
+`PropCapitalGains` is also right-skewed and strictly non-negative → **log transformation** (after verifying no zero/negative values). 
+
+`PropCharity` shows a right-skewed distribution with a heavy upper tail → examine more carefully below before deciding. 
+
+`PropBusiness` and `AvgBusiness` can contain negative values (business losses), ruling out log transformation → **Inverse Hyperbolic Sine (IHS) transformation** (`asinh`) handles negative values while approximating log-scale compression for large positive values. We retain `PropBusiness` (relative to income) over `AvgBusiness` (per filer) as it better aligns with our comparative framework.
+
+Other ratios (`PropSalaries`, `PropTaxLiability`) are mildly skewed proportions → **square-root transformation**.
+
+```{r check-propcapgains, echo=FALSE}
+cat("Min PropCapitalGains:", min(df3$PropCapitalGains, na.rm = TRUE), "\n")
+
+# Visualize PropCharity vs response before deciding
+ggplot(df3, aes(x = PropCharity, y = sq_PresDemRatio)) +
+  geom_point(alpha = 0.3, color = "steelblue") +
+  geom_smooth(method = "loess", color = "red") +
+  geom_smooth(method = "lm", color = "blue", linetype = "dashed") +
+  labs(title = "PropCharity vs. sq_PresDemRatio (Raw)",
+       subtitle = "LOESS (red) vs. Linear fit (blue dashed)") +
+  theme_minimal()
+
+ggplot(df3, aes(x = sqrt(PropCharity), y = sq_PresDemRatio)) +
+  geom_point(alpha = 0.3, color = "steelblue") +
+  geom_smooth(method = "loess", color = "red") +
+  geom_smooth(method = "lm", color = "blue", linetype = "dashed") +
+  labs(title = "sqrt(PropCharity) vs. sq_PresDemRatio",
+       subtitle = "LOESS (red) vs. Linear fit (blue dashed)") +
+  theme_minimal()
+```
+
+**Group 2: Economic Distress and Financial Vulnerability**
 
 ```{r echo=FALSE}
 # Group 2: Economic Distress and Financial Vulnerability
 pairs(df3 %>% select(sq_PresDemRatio, UnemploymentRate2020, PropUnemplComp, 
-                     PropSocSec, PropPensions, PropEICAmount, PropEICReturns),
+                     PropSocSec, PropPensions, PropEICAmount, PropChildTax, 
+                     SeniorBurden),
       main = "Economic Distress vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("firebrick", alpha.f = 0.4))
 ```
 
-```{r echo=FALSE}
-# Group 2: Economic Distress and Financial Vulnerability
-pairs(df3 %>% select(sq_PresDemRatio, PropChildTax, SeniorAndYouthBurden, SeniorBurden, YouthBurden),
-      main = "Economic Distress vs Voting",
-      pch = 16, cex = 0.3,
-      col = adjustcolor("firebrick", alpha.f = 0.4))
-```
+Many distress markers show a *negative* association with Democratic vote share — counties with more severe distress tend to vote less Democratic, consistent with Autor et al. (2020). All variables here are non-negative ratios or rates with mild-to-moderate right skew → **square-root transformation**. Note that `PropEICAmount` and `PropChildTax` show strong internal correlation, as both capture financial vulnerability of low-income families; they are retained as distinct distress dimensions. 
 
-**Group 2: Economic Distress and Financial Vulnerability:** There is significant internal redundancy among EIC-related variables and child tax credits. Interestingly, many markers of "stress" like PropEICReturns show a negative correlation with sq_PresDemRatio in these plots, suggesting that economic decline in certain areas may correlate with a move away from Democratic support. **Transformation Needed:** Square root for these ratios to handle mild skewness and boundary effects.
+**Group 3: Educational Attainment**
 
 ```{r echo=FALSE}
 # Group 3: Educational Attainment
@@ -288,7 +374,9 @@ pairs(df3 %>% select(sq_PresDemRatio, PctNoHS, PctHSOnly, PctSomeCollege, PctBac
       col = adjustcolor("darkgreen", alpha.f = 0.4))
 ```
 
-**Group 3: Educational Attainment:** PctBachelors is one of the strongest positive predictors for Democratic support. The matrix reveals high multicollinearity within this group, particularly a strong negative relationship between PctBachelors and lower education levels like PctHSOnly. **Transformation Needed:** Square root for these percentages to ensure they meet the linearity assumptions of the regression model.
+`PctBachelors` is the strongest positive predictor of Democratic vote share. Strong negative correlations between `PctBachelors` and lower education categories indicate multicollinearity; we will select `PctBachelors` as the single education representative in the Reduced Model. All are percentage variables → **square-root transformation** except for `PctSomeCollege` which looks good already.
+
+**Group 4: Racial and Gender Demographics**
 
 ```{r echo=FALSE}
 # Group 4: Racial and Gender Demographics
@@ -298,17 +386,41 @@ pairs(df3 %>% select(sq_PresDemRatio, PctWhite, PctBlack, PctAsian, PctHispanic,
       col = adjustcolor("darkorchid", alpha.f = 0.4))
 ```
 
-**Group 4: Racial and Gender Demographics:** This group exhibits a "zero-sum" multicollinearity effect, where PctWhite is strongly negatively correlated with all other racial categories. Diversity markers (PctBlack, PctHispanic, PctAsian) are generally positive predictors for sq_PresDemRatio. **Transformation Needed:** Square root for all racial percentage variables.
+Race variables sum to approximately 100%, creating zero-sum multicollinearity. We check whether `PctBlack` has a quadratic relationship with the response (given its right-skewed distribution in many counties):
+
+```{r check-pctblack-quadratic, echo=FALSE}
+ggplot(df3, aes(x = sqrt(PctBlack), y = sq_PresDemRatio)) +
+  geom_point(alpha = 0.3, color = "darkorchid") +
+  geom_smooth(method = "loess", color = "red") +
+  geom_smooth(method = "lm", color = "blue", linetype = "dashed") +
+  labs(title = "sqrt(PctBlack) vs. sq_PresDemRatio",
+       subtitle = "LOESS (red) vs. Linear fit (blue dashed) — checking for quadratic pattern") +
+  theme_minimal()
+
+# Also check quadratic fit
+lm_black_lin  <- lm(sq_PresDemRatio ~ sqrt(PctBlack), data = df3)
+lm_black_quad <- lm(sq_PresDemRatio ~ sqrt(PctBlack) + I(sqrt(PctBlack)^2), data = df3)
+cat("Linear R²:   ", round(summary(lm_black_lin)$r.squared, 4), "\n")
+cat("Quadratic R²:", round(summary(lm_black_quad)$r.squared, 4), "\n")
+cat("Quadratic term p-value:",
+    round(summary(lm_black_quad)$coefficients[3, 4], 4), "\n")
+```
+
+`PctMale` is a percentage variable near 50% with low skewness, but we apply a log transformation per reviewer recommendation to stabilize variance in the tails. All other race variables → **square-root transformation**.
+
+**Group 5: Age and Dependency Ratios**
 
 ```{r echo=FALSE}
 # Group 5: Age and Dependency Ratios
-pairs(df3 %>% select(sq_PresDemRatio, MedianAge, Pct18_34, Pct65Plus),
+pairs(df3 %>% select(sq_PresDemRatio, MedianAge, Pct18_34, Pct65Plus, SeniorBurden),
       main = "Age and Dependency vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("darkorange", alpha.f = 0.4))
 ```
 
-**Group 5: Age and Dependency Ratios:** There is a massive "super-cluster" of multicollinearity between MedianAge, Pct65Plus, and SeniorBurden. These variables are virtually redundant, and the plots show that older counties generally correlate with lower Democratic vote shares. **Transformation Needed:** Square root for dependency ratios to stabilize the variance of these calculated proportions.
+`MedianAge`, `Pct65Plus`, and `SeniorBurden` are highly redundant. `SeniorBurden` is retained as it directly captures the fiscal dependency ratio relevant to our distress block. → **square-root transformation** for the dependency ratio. Note that `SeniorBurden` is part of the distress block and will not be in the reduced model.
+
+**Group 6: Urbanization and Population Dynamics**
 
 ```{r echo=FALSE}
 # Group 6: Urbanization and Population Dynamics
@@ -319,83 +431,121 @@ pairs(df3 %>% select(sq_PresDemRatio, PctUrban, IsMetro, BirthRate2020,
       col = adjustcolor("dodgerblue", alpha.f = 0.4))
 ```
 
-**Group 6: Urbanization and Population Dynamics:** PctUrban shows a distinct, non-linear positive relationship with Democratic voting. This group captures the urban-rural divide, with metropolitan integration (IsMetro) acting as a clear categorical separator. **Transformation Needed:** Square root for PctUrban to address its right-skewed distribution.
+This group captures the urban-rural divide, with metropolitan integration (IsMetro) acting as a clear categorical separator. `PctUrban` shows a non-linear positive relationship with Democratic voting, capturing the urban–rural divide. → **square-root transformation**. `BirthRate2020` and `DeathRate2020` are rates → **square-root transformation** to adress mild skewness.
 
-```{r echo=FALSE}
-# Group 7: Business and Self-Employment Income
-pairs(df3 %>% select(sq_PresDemRatio, PropBusiness, AvgBusiness),
-      main = "Business Income vs Voting",
-      pch = 16, cex = 0.3,
-      col = adjustcolor("goldenrod", alpha.f = 0.4))
+### 1.2.5 Best Subsets (Before predictor transformations)
+
+```{r}
+df_reduced_candidates <- df3 %>%
+  select(
+    -UnemploymentRate2020,
+    -PropUnemplComp,
+    -PropEICAmount,
+    -SeniorBurden,
+    -PropChildTax,
+    -PropSocSec,
+    -PropPensions
+  )
+
+fit_g1 <- regsubsets(
+  sq_PresDemRatio ~ . -FIPS -CountyName,
+  data   = df_reduced_candidates,
+  nvmax  = 20,
+  method = "seqrep"
+)
+
+s_g1 <- summary(fit_g1)
+
+best_models_g1 <- data.frame(
+  NumVars = 1:length(s_g1$adjr2),
+  AdjR2   = round(s_g1$adjr2, 4),
+  s_g1$which
+) %>% arrange(desc(AdjR2))
+
+# Plot
+plot(s_g1$adjr2, type = "b",
+     xlab = "Number of Variables",
+     ylab = "Adjusted R2",
+     main = "Group 1 — Adjusted R2")
+best_n_g1 <- which.max(s_g1$adjr2)
+points(best_n_g1, max(s_g1$adjr2), col = "red", pch = 16, cex = 1.5)
+
+plot(fit_g1, scale = "adjr2",
+     main = "Variables Selection for Reduced Model",
+     cex.axis = 0.55)
 ```
 
-**Group 7: Business and Self-Employment Income:** PropBusiness and AvgBusiness are highly redundant. This group is unique because it can contain negative values (representing business losses), which prevents standard log transformations. **Transformation Needed:** An Inverse Hyperbolic Sine (IHS) transformation is required to handle negative values while mimicking a log scale to manage skewness (as established in our conversation history).
+
+### 1.2.6 Applying Transformations
 
 ```{r echo=FALSE}
 # ---------------- APPLY TRANSFORMATIONS ----------------
 df4 <- df3 %>%
   mutate(
-    # group 1
-    log_TotalAgi = log1p(TotalGrossIncome),
-    sq_PropSalaries = sqrt(PropSalaries),
-    sq_PropCharity = sqrt(PropCharity),
-    sq_PropTaxLiability = sqrt(PropTaxLiability),
+    # group 1: General Prosperity
+    log_TotalGrossIncome  = log1p(TotalGrossIncome),
+    log_PropCapitalGains  = log(PropCapitalGains + 1e-6),  # add small constant to handle zeros
+    sq_PropSalaries       = sqrt(PropSalaries),
+    sq_PropCharity        = sqrt(PropCharity),
+    sq_PropTaxLiability   = sqrt(PropTaxLiability),
+    ihs_PropBusiness = asinh(PropBusiness),
     
-    # group 2
-    sq_PropUnemplComp = sqrt(PropUnemplComp),
-    sq_PropEICAmount = sqrt(PropEICAmount),
-    sq_PropEICReturns = sqrt(PropEICReturns),
-    sq_PropChildTax = sqrt(PropChildTax),
+    # group 2: Economic Distress
+    sq_PropUnemplComp     = sqrt(PropUnemplComp),
+    sq_PropEICAmount      = sqrt(PropEICAmount),
+    sq_PropChildTax       = sqrt(PropChildTax),
+    sq_PropSocSec         = sqrt(PropSocSec),
+    sq_PropPensions       = sqrt(PropPensions),
+    sq_SeniorBurden       = sqrt(SeniorBurden),
     
-    # group 3
+    # group 3: Education
     sq_PctBachelors = sqrt(PctBachelors),
-    sq_PctNoHs = sqrt(PctNoHS),
-    sq_PctHsOnly = sqrt(PctHSOnly),
+    sq_PctNoHS = sqrt(PctNoHS),
+    sq_PctHSOnly = sqrt(PctHSOnly),
     
-    # group 4
-    sq_PctWhite = sqrt(PctWhite),
-    sq_PctBlack = sqrt(PctBlack),
-    sq_PctHispanic = sqrt(PctHispanic),
-    sq_PctAsian = sqrt(PctAsian),
+    # group 4: Race and Gender
+    sq_PctWhite           = sqrt(PctWhite),
+    sq_PctBlack           = sqrt(PctBlack),
+    sq_PctHispanic        = sqrt(PctHispanic),
+    sq_PctAsian           = sqrt(PctAsian),
+    log_PctMale           = log(PctMale),
     
-    # group 5
-    sq_OldAgeDependency = sqrt(SeniorBurden),
-    sq_ChildDependency = sqrt(YouthBurden),
-    sq_AgeDependency = sqrt(SeniorAndYouthBurden),
+    # group 5: Age 
+    # None, SeniorBurden was handled in group 2
     
-    # group 6
+    # group 6: Urbanization
     sq_PctUrban = sqrt(PctUrban),
     sq_BirthRate = sqrt(BirthRate2020),
     sq_DeathRate = sqrt(DeathRate2020),
     
-    # group 7
-    ihs_PropBusiness = asinh(PropBusiness),
-    ihs_AvgBusiness = asinh(AvgBusiness)
   ) %>%
-  # Drop original untransformed versions only, keep everything else
   select(
-    -TotalGrossIncome, -PropSalaries, -PropCharity, -PropTaxLiability,
-    -PropUnemplComp, -PropEICAmount, -PropEICReturns, -PropChildTax,
+    # Drop untransformed originals
+    -TotalGrossIncome, -PropCapitalGains, -PropSalaries, -PropCharity,
+    -PropTaxLiability,
+    -PropUnemplComp, -PropEICAmount, -PropChildTax, -PropSocSec, -PropPensions,
     -PctBachelors, -PctNoHS, -PctHSOnly,
-    -PctWhite, -PctBlack, -PctHispanic, -PctAsian,
-    -SeniorBurden, -YouthBurden, -SeniorAndYouthBurden,
+    -PctWhite, -PctBlack, -PctHispanic, -PctAsian, -PctMale,
+    -SeniorBurden,
     -PctUrban, -BirthRate2020, -DeathRate2020,
-    -PropBusiness, -AvgBusiness
+    -PropBusiness, -AvgBusiness  # AvgBusiness dropped in favor of PropBusiness
   )
 
 # ---------------- VERIFY TRANSFORMATIONS ----------------
 par(mfrow = c(6, 4), mar = c(2, 2, 2, 1))
-all_transformed_vars <- c(
-  "log_TotalAgi", "sq_PropSalaries", "sq_PropCharity", "sq_PropTaxLiability",
-  "sq_PropUnemplComp", "sq_PropEICAmount", "sq_PropEICReturns", "sq_PropChildTax",
-  "sq_PctBachelors", "sq_PctNoHs", "sq_PctHsOnly",
-  "sq_PctWhite", "sq_PctBlack", "sq_PctHispanic", "sq_PctAsian",
-  "sq_OldAgeDependency", "sq_ChildDependency", "sq_AgeDependency",
+transformed_vars <- c(
+  "log_TotalGrossIncome", "log_PropCapitalGains", "sq_PropSalaries",
+  "sq_PropCharity", "sq_PropTaxLiability",
+  "sq_PropUnemplComp", "sq_PropEICAmount", "sq_PropChildTax",
+  "sq_PropSocSec", "sq_PropPensions",
+  "sq_PctBachelors", "sq_PctNoHS", "sq_PctHSOnly",
+  "sq_PctWhite", "sq_PctBlack", "sq_PctHispanic", "sq_PctAsian", "log_PctMale",
+  "sq_SeniorBurden",
   "sq_PctUrban", "sq_BirthRate", "sq_DeathRate",
-  "ihs_PropBusiness", "ihs_AvgBusiness"
+  "ihs_PropBusiness"
 )
 
-for (v in all_transformed_vars) {
+for (v in transformed_vars) {
   # Verify variable exists in df4 to avoid errors
   if (v %in% names(df4)) {
     hist(df4[[v]], 
@@ -414,115 +564,53 @@ cat("Number of columns now:", ncol(df2), "\n")
 cat("Number of rows now:", nrow(df2), "\n")
 ```
 
-**Interpretation:**
 
-log_TotalAgi is now roughly symmetric, correcting the extreme right-skew found in the raw income totals. Ratios such as sq_PropSalaries and sq_PropTaxLiability show significantly improved normality.
+**Summary of transformation outcomes:**
 
-The "stress" markers (e.g., sq_PropUnemplComp, sq_PropEICAmount, sq_PropEICReturns) are no longer heavily clustered at the zero-boundary, which will allow your model to more accurately estimate the impact of financial vulnerability.
+- `log_TotalGrossIncome` and `log_PropCapitalGains` are now roughly symmetric.
 
-Variables like sq_PctBachelors and the age dependency ratios (sq_OldAgeDependency, sq_AgeDependency) now appear nearly normal. However, sq_PctBlack, sq_PctAsian, and sq_PctHispanic still show a right-skew because many U.S. counties have very small minority populations; the square root has "pulled" these values out to make them more manageable, but they remain inherently skewed.
+- Distress markers (`sq_PropUnemplComp`, `sq_PropEICAmount`, `sq_PropChildTax`) are no longer heavily clustered at zero, allowing the model to more accurately estimate the impact of financial vulnerability.
 
-sq_PctUrban still shows a spike at zero (representing entirely rural counties), but the overall distribution is more spread out than the raw percentage.
+- `sq_PctBlack`, `sq_PctAsian`, and `sq_PctHispanic` remain right-skewed due to the many U.S. counties with very small minority populations — this is an inherent feature of the data, not a transformation failure.
 
-The IHS transformation (ihs_PropBusiness, ihs_AvgBusiness) successfully handled potential negative values while achieving a unimodal distribution.
+- `sq_PctUrban` retains a spike near zero (entirely rural counties) but is more spread out than the raw variable.
 
-### 1.2.4 Mean-centering and Multicollinearity (VIF)
+- `ihs_PropBusiness` is unimodal and handles negative values (business losses) successfully.
 
-We will first **mean-center** all numeric variables subtracting their mean. We exclude the unique identifier (FIPS), the categorical urbanization marker (IsMetro), and the transformed response variable (sq_PresDemRatio).
+### 1.2.6 Mean-centering
+
+All numeric predictors are mean-centered (subtracting their mean). This is essential before including interaction terms to reduce multicollinearity between main effects and their products, and to make the intercept interpretable as the predicted response at average predictor values. `FIPS`, `IsMetro`, and the response `sq_PresDemRatio` are excluded.
 
 ```{r echo=FALSE}
-# ---------------- MEAN-CENTERING ----------------
-# Mean-centering is essential before introducing interaction terms in Reduced Model
-# to reduce multicollinearity between main effects and their interactions
-# and to make intercepts interpretable
-
 df5 <- df4 %>%
   mutate(across(where(is.numeric) & !any_of(c("FIPS", "sq_PresDemRatio", "IsMetro")), 
                 ~ . - mean(., na.rm = TRUE)))
 
-print("Verify mean is about 0:\n")
-df5 %>%
-  summarize(across(where(is.numeric), mean, na.rm = TRUE))
+col_means <- df5 %>%
+  select(where(is.numeric) & !any_of(c("FIPS", "sq_PresDemRatio", "IsMetro"))) %>%
+  summarise(across(everything(), ~ round(mean(., na.rm = TRUE), 6)))
+cat("Column means after centering (should all be ~0):\n")
+print(t(col_means))
 ```
 
-We then address the extreme redundancy seen in our Correlation Matrix through **VIFs**.
+---
 
-SeniorAndYouthBurden is the combination of SeniorBurden and YouthBurden. Including all three is a "perfect" alias that makes VIF calculation mathematically impossible so we drop sq_AgeDependency. Like we mentioned earlier, we will use PropBusiness instead of AvgBusiness so we will drop ihs_AvgBusiness. We will also drop sq_PctNoHs. sq_PropEICAmount and sq_PropEICReturns is nearly identical and we will drop PropEICReturns since we are more interested in the intensity of poverty, not depth.
-
-```{r echo=FALSE}
-df6 <- df5 %>%
-  select(-sq_AgeDependency, -ihs_AvgBusiness, -sq_PctNoHs, -sq_PropEICReturns)
-
-cat("Number of colunms before dropping some variables:", ncol(df5), "\n")
-cat("Number of colunms after dropping some variables:", ncol(df6), "\n")
-```
-
-
-```{r echo=FALSE}
-# Run a preliminary model with ALL candidate predictors to identify high VIFs
-vif_model <- lm(sq_PresDemRatio ~ . - FIPS - CountyName, data = df6)
-vif_results <- vif(vif_model)
-vif_df <- data.frame(Variable = names(vif_results), VIF = as.numeric(vif_results)) %>%
-  arrange(desc(VIF))
-
-# ---------------- FILTERED PRINTING ----------------
-cat("Variables with VIF > 5 (Moderate Multicollinearity):\n")
-print(vif_df %>% filter(VIF > 5 & VIF <= 10))
-
-cat("Variables with VIF > 10 (SEVERELY Multicollinear - Must Prune):\n")
-print(vif_df %>% filter(VIF > 10))
-```
-
-Our VIF analysis shows extreme multicollinearity in the full model, particularly within the age, dependency, and economic distress blocks. A VIF of 414 or 349 means these variables are almost perfectly redundant, which will inflate our standard errors and make our coefficient estimates unstable, potentially invalidating our Extra Sum of Squares (ESS) test. Thus, we must prune these variables to create a stable Reduced Model. The goal is to keep only the most theoretically important variable from each redundant cluster.
-
-We will drop Pct65Plus (Redundant with sq_OldAgeDependency), MedianAge (Redundant with sq_OldAgeDependency), sq_ChildDependency (Redundant with sq_PropChildTax), sq_PctHsOnly (Redundant with sq_PctBachelors), sq_PctWhite (Redundant with diversity markers (zero-sum)).
-
-```{r echo=FALSE}
-# We remove the most redundant variables identified by the high VIFs
-df_final <- df6 %>%
-  select(
-    -Pct65Plus,           # Redundant with sq_OldAgeDependency
-    -MedianAge,           # Redundant with sq_OldAgeDependency
-    -sq_ChildDependency,  # Redundant with sq_PropChildTax
-    -sq_PctHsOnly,        # Redundant with sq_PctBachelors
-    -sq_PctWhite,         # Redundant with diversity markers (zero-sum)
-  )
-
-cat("Number of colunms before dropping some variables:", ncol(df6), "\n")
-cat("Number of colunms after dropping some variables:", ncol(df_final), "\n")
-
-# rerun VIF check
-vif_model_v2 <- lm(sq_PresDemRatio ~ . - FIPS - CountyName, data = df_final)
-
-vif_v2_results <- vif(vif_model_v2)
-
-# Print results to ensure they are now mostly < 10
-print("Check vifs again to ensure most are < 10")
-vif_v2_df <- data.frame(Variable = names(vif_v2_results), VIF = as.numeric(vif_v2_results)) %>%
-  arrange(desc(VIF))
-
-print(vif_v2_df)
-```
-
-
-# 2. Best Subsets
+# 2. Best Subsets After Predictor Transformation
 
 We will now run Best Subsets Regression on our dataset (excluding the economic distress block) to select variables for our Reduced Model.
 
 ```{r echo=FALSE}
-df_reduced_candidates <- df_final %>%
+df_reduced_candidates <- df5 %>%
   select(
     -UnemploymentRate2020,
     -sq_PropUnemplComp,
     -sq_PropEICAmount,
-    -sq_OldAgeDependency,
-    -sq_PropChildTax
-    -PropSocSec,
-    -PropPensions
+    -sq_SeniorBurden,
+    -sq_PropChildTax,
+    -sq_PropSocSec,
+    -sq_PropPensions
   )
-```
 
-```{r echo=FALSE}
 fit_g1 <- regsubsets(
   sq_PresDemRatio ~ . -FIPS -CountyName,
   data   = df_reduced_candidates,
@@ -538,46 +626,47 @@ best_models_g1 <- data.frame(
   s_g1$which
 ) %>% arrange(desc(AdjR2))
 
-# head(best_models_g1, 10)
-
-best_n_g1 <- which.max(s_g1$adjr2)
-cat("Best model size (Adj R2):", best_n_g1, "variables\n")
-cat("Best Adj R2:", round(max(s_g1$adjr2), 4), "\n")
-
 # Plot
 plot(s_g1$adjr2, type = "b",
      xlab = "Number of Variables",
      ylab = "Adjusted R2",
      main = "Group 1 — Adjusted R2")
+best_n_g1 <- which.max(s_g1$adjr2)
 points(best_n_g1, max(s_g1$adjr2), col = "red", pch = 16, cex = 1.5)
 
 plot(fit_g1, scale = "adjr2",
      main = "Variables Selection for Reduced Model",
      cex.axis = 0.55)
+```
 
+The transformed variables not only improve model assumptions but also improved overall $R^2$.
+
+---
+
+# 3. Reduced Model
+
+The **Reduced Model (Model R)** uses only the predictors selected by Best Subsets — traditional demographic, education, prosperity, and urbanization variables. It deliberately excludes the economic distress block. This is the baseline against which the Full Model will be compared in the Extra Sum of Squares test. 
+
+## 3.1 Reduced Model Without Interactions
+
+```{r echo=FALSE}
+cat("--- REDUCED MODEL WITHOUT INTERACTION SUMMARY --- \n")
+cat("Best model size (Adj R2):", best_n_g1, "variables\n")
+cat("Best Adj R2:", round(max(s_g1$adjr2), 4), "\n")
 # Selected variables
 vars_g1 <- names(coef(fit_g1, best_n_g1))[-1]
 cat("Selected from the data:\n")
 print(vars_g1)
-```
 
-# 3. Reduced Model
+# Build formula dynamically from Best Subsets selected variables
+formula_reduced1 <- as.formula(
+  paste("sq_PresDemRatio ~", paste(vars_g1, collapse = " + "))
+)
 
-We will now make a reduced model **without interaction terms** first.
-
-```{r echo=FALSE}
-lm_reduced1 <- lm(sq_PresDemRatio ~ 
-    PctMale + Pct18_34 + PropCapitalGains + PropPartnership + 
-    PropMortgage + AvgWage + MigrationRate2020 + log_TotalAgi + 
-    sq_PropSalaries + sq_PropCharity + sq_PropTaxLiability + sq_PctBachelors + 
-    sq_PctBlack + sq_PctHispanic + sq_PctAsian + sq_PctUrban + 
-    sq_DeathRate + ihs_PropBusiness + IsMetro, data=df_final)
-
-cat("--- REDUCED MODEL WITHOUT INTERACTION SUMMARY --- \n")
-summary(lm_reduced1)
+lm_reduced1 <- lm(formula_reduced1, data = df5)
 
 par(mfrow = c(2, 2))
-plot(lm_reduced1)
+plot(lm_reduced1, main = "Reduced Model (No Interactions)")
 par(mfrow = c(1, 1))
 
 # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
@@ -596,67 +685,170 @@ for (v in vars_g1) {
 par(mfrow = c(1, 1))
 ```
 
-We will now test which interaction terms can be important.
+In the **Residuals vs Fitted plot**, observation 1691 is an extreme outlier. Let's investigate this.
 
 ```{r echo=FALSE}
-lm_reduced2 <- lm(
-  sq_PresDemRatio ~ 
-    (PctMale + Pct18_34 + PropCapitalGains + PropPartnership + 
-     PropMortgage + AvgWage + MigrationRate2020 + log_TotalAgi + 
-     sq_PropSalaries + sq_PropCharity + sq_PropTaxLiability + 
-     sq_PctBachelors + sq_PctBlack + sq_PctHispanic + 
-     sq_PctAsian + sq_PctUrban + sq_DeathRate + 
-     ihs_PropBusiness + IsMetro)^2,
-  data = df_final
+df5[1691,]
+df %>% filter(FIPS == 31149)
+```
+
+Rock County has `SalariesWages` $>$ `TotalGrossIncome`. Let's check all counties that are similar.
+
+```{r echo=FALSE}
+# Flag counties where salaries exceed total gross income (data anomaly)
+anomalies <- df %>% 
+  filter(SalariesWages > TotalGrossIncome) %>%
+  select(FIPS, CountyName, NumTaxReturns, TotalGrossIncome, SalariesWages)
+
+cat("Counties where SalariesWages > TotalGrossIncome:\n")
+print(anomalies)
+```
+
+Four counties have this same data anomaly — salaries exceeding total gross income. Thus, an additional four counties were removed on data quality grounds: Hayes County, NE; Rock County, NE; Sioux County, ND; and Shackelford County, TX. In each case, reported salaries and wages exceeded total adjusted gross income — a mathematical inconsistency arising when large business or partnership losses reduce AGI below gross wages. This renders all income proportion variables for these counties unreliable (several exceed 1.0) and they are excluded from analysis. 
+
+```{r echo=FALSE}
+anomaly_fips <- c(31085, 31149, 38085, 48417)
+
+anomaly_counties <- df %>%
+  filter(FIPS %in% anomaly_fips) %>%
+  select(FIPS, CountyName, NumTaxReturns, TotalGrossIncome, SalariesWages)
+
+df6 <- df5 %>%
+  filter(!FIPS %in% anomaly_fips)
+
+cat("\nObservations removed:", nrow(df5) - nrow(df6), "\n")
+cat("Final analytic sample:", nrow(df6), "counties\n")
+```
+
+Now, we rerun Best Subsets since we removed four more observations.
+
+```{r echo=FALSE}
+df_reduced_candidates <- df6 %>%
+  select(
+    -UnemploymentRate2020,
+    -sq_PropUnemplComp,
+    -sq_PropEICAmount,
+    -sq_SeniorBurden,
+    -sq_PropChildTax,
+    -sq_PropSocSec,
+    -sq_PropPensions
+  )
+
+fit_g2 <- regsubsets(
+  sq_PresDemRatio ~ . -FIPS -CountyName,
+  data   = df_reduced_candidates,
+  nvmax  = 20,
+  method = "seqrep"
 )
 
-tidy_reduced <- tidy(lm_reduced2)
+s_g2 <- summary(fit_g2)
 
-# ---------------- TOP 10 INTERACTIONS ----------------
-top_interactions <- tidy_reduced %>%
-  filter(grepl(":", term)) %>%      # interactions only
-  filter(p.value < 0.001) %>%       # strong significance
-  arrange(p.value) %>%              # smallest p-values first
-  slice(1:10)                       # KEEP ONLY TOP 10
+best_models_g2 <- data.frame(
+  NumVars = 1:length(s_g2$adjr2),
+  AdjR2   = round(s_g2$adjr2, 4),
+  s_g2$which
+) %>% arrange(desc(AdjR2))
 
-cat("\n--- TOP 10 INTERACTION TERMS ---\n")
-print(top_interactions)
+# Plot
+plot(s_g2$adjr2, type = "b",
+     xlab = "Number of Variables",
+     ylab = "Adjusted R2",
+     main = "Group 1 — Adjusted R2")
+best_n_g2 <- which.max(s_g2$adjr2)
+points(best_n_g2, max(s_g2$adjr2), col = "red", pch = 16, cex = 1.5)
 
-# ---------------- MAIN EFFECTS ----------------
-significant_main <- tidy_reduced %>%
-  filter(!grepl(":", term)) %>%
-  filter(term != "(Intercept)") %>%
-  filter(p.value < 0.05) %>%
+plot(fit_g2, scale = "adjr2",
+     main = "Variables Selection for Reduced Model",
+     cex.axis = 0.55)
+```
+
+```{r}
+cat("--- REDUCED MODEL AFTER OUTLIERS REMOVAL SUMMARY --- \n")
+cat("Best model size (Adj R2):", best_n_g2, "variables\n")
+cat("Best Adj R2:", round(max(s_g2$adjr2), 4), "\n")
+# Selected variables
+vars_g2 <- names(coef(fit_g2, best_n_g2))[-1]
+cat("Selected from the data:\n")
+print(vars_g2)
+
+# Build formula dynamically from Best Subsets selected variables
+formula_reduced2 <- as.formula(
+  paste("sq_PresDemRatio ~", paste(vars_g2, collapse = " + "))
+)
+
+lm_reduced2 <- lm(formula_reduced2, data = df6)
+
+par(mfrow = c(2, 2))
+plot(lm_reduced2, main = "Reduced Model (No Interactions)")
+par(mfrow = c(1, 1))
+```
+
+The $R^2$ is not overwhelmingly better but the residual plots look better.
+
+## 3.2 Identifying Interaction Terms
+
+We will now test which interaction terms can be important.
+
+```{r}
+# Build saturated two-way interaction formula from the same variables
+formula_interactions <- as.formula(
+  paste("sq_PresDemRatio ~ (", paste(vars_g2, collapse = " + "), ")^2")
+)
+
+# Fit interaction model
+lm_interactions <- lm(formula_interactions, data = df6)
+
+tidy_int <- tidy(lm_interactions)
+
+# Bonferroni-corrected threshold
+n_tests <- sum(grepl(":", tidy_int$term))
+bonf_alpha <- 0.05 / n_tests
+cat("Number of interaction terms tested:", n_tests, "\n")
+cat("Bonferroni-corrected alpha:", round(bonf_alpha, 6), "\n")
+
+top_interactions <- tidy_int %>%
+  filter(grepl(":", term)) %>%
+  filter(p.value < bonf_alpha) %>%
+  arrange(p.value) %>%
+  slice(1:10)
+
+cat("\nStatistically significant interactions (Bonferroni-corrected):\n")
+print(top_interactions %>% select(term, estimate, std.error, statistic, p.value))
+
+significant_main <- tidy_int %>%
+  filter(!grepl(":", term), term != "(Intercept)", p.value < 0.05) %>%
   arrange(p.value)
 
-cat("\n--- SIGNIFICANT MAIN EFFECTS ---\n")
-print(significant_main)
+cat("\nSignificant main effects:\n")
+print(significant_main %>% select(term, estimate, p.value))
+```
 
-# ---------------- BUILD FINAL TERM LIST ----------------
+## 3.3 Final Reduced Model
+
+We build the final Reduced Model using the selected main effects and theoretically motivated interaction terms that also reach statistical significance.
+
+```{r echo=FALSE}
 selected_terms <- c(
   significant_main$term,
   top_interactions$term
 )
 
-# ---------------- FINAL REDUCED MODEL ----------------
-formula_reduced_final <- as.formula(
-  paste(
-    "sq_PresDemRatio ~",
-    paste(selected_terms, collapse = " + ")
-  )
+formula_reduced <- as.formula(
+  paste("sq_PresDemRatio ~", paste(selected_terms, collapse = " + "))
 )
 
-lm_reduced_final <- lm(formula_reduced_final, data = df_final)
+lm_R <- lm(formula_reduced, data = df6)
 
-cat("\n--- FINAL REDUCED MODEL SUMMARY ---\n")
-summary(lm_reduced_final)
+cat("--- FINAL REDUCED MODEL (Model R) SUMMARY ---\n")
+summary(lm_R)
+
 par(mfrow = c(2, 2))
-plot(lm_reduced_final)
+plot(lm_R, main = "Model R Diagnostics")
 par(mfrow = c(1, 1))
 
 # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
-mf_final  <- model.frame(lm_reduced_final)
-res_final <- residuals(lm_reduced_final)
+mf_final  <- model.frame(lm_R)
+res_final <- residuals(lm_R)
 
 # Split main effects and interactions
 main_terms <- selected_terms[!grepl(":", selected_terms)]
@@ -685,82 +877,105 @@ for (v in selected_terms) {
 par(mfrow = c(1, 1))
 ```
 
-In the Residuals vs Fitted plot, observation 2636 is an extreme outlier. Let's investigate this.
+---
+
+# 4. Full Model
+
+The **Full Model** adds the seven economic distress block variables to Model R. This model represents the hypothesis that economic distress provides additional explanatory power beyond traditional predictors.
+
+**Economic Distress Block (added to Reduced Model):**
+
+| Variable | Description |
+|---|---|
+| `UnemploymentRate2020` | Raw unemployment rate — active joblessness |
+| `sq_PropUnemplComp` | Reliance on unemployment compensation (safety net dependency) |
+| `sq_PropEICAmount` | Intensity of EIC claims (working-poor concentration) |
+| `sq_PropChildTax` | ACTC reliance (working-poor families with children) |
+| `sq_SeniorBurden` | Old-age dependency ratio (fiscal stress from elderly population) |
+| `sq_PropSocSec` | Social Security income reliance |
+| `sq_PropPensions` | Pension and annuity income reliance |
+
+**Economic Distress Interaction Terms (add if present in the Reduced Model):**
+
+we consider whether any economic distress markers have theoretically motivated interactions with variables already in Reduced Model. Including these interactions in Full Model — rather than only distress main effects — allows the ESS test to capture the full contribution of economic distress as a construct, including the ways distress effects are *moderated* by demographic context.
+
+**`sq_SeniorBurden:sq_PropSocSec` — Compounded elderly fiscal stress**
+
+Senior burden (the old-age dependency ratio) and Social Security reliance measure related but distinct dimensions of elderly economic dependency. Their interaction captures counties where both are simultaneously high — a compounded fiscal stress condition where a large elderly population is also heavily dependent on federal transfer income rather than private wealth. The political effect of senior burden is expected to be amplified in these counties, as both the size and the economic
+vulnerability of the elderly population reinforce each other.
+
+**`sq_PropEICAmount:sq_PctBlack` and `sq_PropEICAmount:sq_PctHispanic` — Racial context of working poverty**
+
+EIC intensity measures the concentration of working-poor households, but the political meaning of that poverty differs by racial composition. Consistent with Autor et al. (2020), high EIC concentration in predominantly white counties often correlates with a shift *away* from Democratic candidates. In counties with larger Black or Hispanic populations, the same poverty concentration is more likely to coincide with stronger Democratic turnout infrastructure and community organizing. These interactions allow the model to estimate separate slopes for EIC intensity depending on racial context, rather than forcing a single average effect across very different communities.
+
+**`sq_PropChildTax:sq_PctHispanic` — Child poverty in Hispanic communities**
+
+Additional Child Tax Credit (ACTC) reliance — our marker for working-poor families with children — is disproportionately concentrated in Hispanic communities nationally. This interaction tests whether the political signal of child-family poverty differs in Hispanic-majority counties relative to the baseline pattern, which would be obscured if only main effects were included.
+
+**`sq_SeniorBurden:sq_PctBachelors` — Education moderates elderly dependency**
+
+The political consequences of a high elderly dependency burden are likely moderated by county education levels. In highly educated counties, high senior burden may coexist with Democratic-leaning retirees and professional caregiving economies. In low-education counties, high senior burden tends to accompany resource scarcity and a more Republican-leaning older electorate. Without this interaction, the model forces a single slope for senior burden regardless of educational context.
+
+**`sq_PropUnemplComp:MigrationRate2020` — Acute distress and population flight**
+
+Counties with both high unemployment compensation reliance *and* high out-migration represent the most acute form of economic distress — not only are residents unemployed and reliant on safety nets, but the working-age population is actively leaving. This compounded condition of stagnation and depopulation is theoretically distinct from either variable alone and may carry a stronger or different political signal than unemployment reliance in a stable or growing county.
 
 ```{r echo=FALSE}
-df_final[2636,]
-```
-
-Loving County was identified as an influential observation with high leverage and large residual values in diagnostic plots. It is the least populous county in the United States, with a 2020 census population of 64.  Due to its extremely small population and atypical predictor values, Loving County and Kalawao County of 82 population was removed to improve model stability and satisfy regression assumptions. 
-
-```{r echo=FALSE}
-# Remove counties with CensusPop2020 < 100 from the df
-small_counties <- df %>% filter(CensusPop2020 < 100) %>% select(FIPS, CountyName, CensusPop2020)
-df_final_2 <- df_final %>% filter(!FIPS %in% small_counties$FIPS)
-cat("Counties removed:\n")
-print(small_counties)
-cat("Counties remaining:", nrow(df_final_2), "\n")
-```
-
-Thus, we run our final Reduced Model again.
-
-```{r echo=FALSE}
-lm_reduced3 <- lm(
-  sq_PresDemRatio ~ 
-    (PctMale + Pct18_34 + PropCapitalGains + PropPartnership + 
-     PropMortgage + AvgWage + MigrationRate2020 + log_TotalAgi + 
-     sq_PropSalaries + sq_PropCharity + sq_PropTaxLiability + 
-     sq_PctBachelors + sq_PctBlack + sq_PctHispanic + 
-     sq_PctAsian + sq_PctUrban + sq_DeathRate + 
-     ihs_PropBusiness + IsMetro)^2,
-  data = df_final_2
+distress_terms <- c(
+  "UnemploymentRate2020",
+  "sq_PropUnemplComp",
+  "sq_PropEICAmount",
+  "sq_PropChildTax",
+  "sq_SeniorBurden",
+  "sq_PropSocSec",
+  "sq_PropPensions"
 )
 
-tidy_reduced <- tidy(lm_reduced3)
-
-# ---------------- TOP 10 INTERACTIONS ----------------
-top_interactions <- tidy_reduced %>%
-  filter(grepl(":", term)) %>%      # interactions only
-  filter(p.value < 0.001) %>%       # strong significance
-  arrange(p.value) %>%              # smallest p-values first
-  slice(1:10)                       # KEEP ONLY TOP 10
-
-# ---------------- MAIN EFFECTS ----------------
-significant_main <- tidy_reduced %>%
-  filter(!grepl(":", term)) %>%
-  filter(term != "(Intercept)") %>%
-  filter(p.value < 0.05) %>%
-  arrange(p.value)
-
-# ---------------- BUILD FINAL TERM LIST ----------------
-selected_terms <- c(
-  significant_main$term,
-  top_interactions$term
+distress_interactions <- c(
+  "sq_SeniorBurden:sq_PropSocSec",
+  "sq_PropEICAmount:sq_PctBlack",
+  "sq_PropEICAmount:sq_PctHispanic",
+  "sq_PropChildTax:sq_PctHispanic",
+  "sq_SeniorBurden:sq_PctBachelors",
+  "sq_PropUnemplComp:MigrationRate2020"
 )
 
-# ---------------- FINAL REDUCED MODEL ----------------
-formula_reduced_final <- as.formula(
-  paste(
-    "sq_PresDemRatio ~",
-    paste(selected_terms, collapse = " + ")
-  )
+all_vars_in_data <- names(df6)
+for (term in distress_interactions) {
+  parts <- strsplit(term, ":")[[1]]
+  present <- all(parts %in% all_vars_in_data)
+  cat(term, "— both vars present:", present, "\n")
+}
+
+all_terms <- c(selected_terms, distress_terms, distress_interactions)
+
+formula_F <- as.formula(
+  paste("sq_PresDemRatio ~",
+        paste(all_terms, collapse = " + "))
 )
 
-lm_reduced_final <- lm(formula_reduced_final, data = df_final_2)
+lm_F <- lm(formula_F, data = df6)
 
-cat("\n--- FINAL REDUCED MODEL SUMMARY ---\n")
-summary(lm_reduced_final)
+cat("--- FULL MODEL (Model F) SUMMARY ---\n")
+summary(lm_F)
+
 par(mfrow = c(2, 2))
-plot(lm_reduced_final)
+plot(lm_F, main = "Model F — Diagnostics")
 par(mfrow = c(1, 1))
 
-cat("Number of counties in the model:", nrow(df_final_2), "\n")
+cat("\nFull Model — Adjusted R²:", round(summary(lm_F)$adj.r.squared, 4), "\n")
+cat("Full Model — Residual SE:", round(summary(lm_F)$sigma, 4), "\n")
 
 # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
-mf_final  <- model.frame(lm_reduced_final)
-res_final <- residuals(lm_reduced_final)
+mf_final  <- model.frame(lm_F)
+res_final <- residuals(lm_F)
 
-term_vals <- lapply(selected_terms, function(term) {
+# Split main effects and interactions
+main_terms <- all_terms[!grepl(":", all_terms)]
+inter_terms <- all_terms[grepl(":", all_terms)]
+
+# Build values for all terms
+term_vals <- lapply(all_terms, function(term) {
   if (grepl(":", term)) {
     parts <- strsplit(term, ":")[[1]]
     mf_final[[parts[1]]] * mf_final[[parts[2]]]
@@ -768,10 +983,10 @@ term_vals <- lapply(selected_terms, function(term) {
     mf_final[[term]]
   }
 })
-names(term_vals) <- selected_terms
+names(term_vals) <- all_terms
 
 par(mfrow = c(ceiling(12 / 4), 4), mar = c(3, 3, 2, 1))
-for (v in selected_terms) {
+for (v in all_terms) {
   plot(term_vals[[v]], res_final,
        xlab = v, ylab = "Residuals",
        main = paste("Residuals vs", v),
@@ -782,25 +997,53 @@ for (v in selected_terms) {
 par(mfrow = c(1, 1))
 ```
 
-After removal of the influential outlier, diagnostic plots indicate that the assumptions of linearity, constant variance, normality, and absence of undue influence are reasonably satisfied. Minor deviations from normality remain in the upper tail, but these are not severe given the large sample size. Even though $R^2$ decreases, it was a very small decrease (from 0.6711 to 0.667), the removal is necessary to prevent our model from treating the extreme behaviors of < 90 people as being as statistically significant as the trends seen in counties with millions of residents.
+# 5. Extra Sum of Squares Test
 
-**Reduced Model Summary:**
+The Extra Sum of Squares F-test formally answers our research question: **do the seven economic distress variables jointly provide statistically significant explanatory power for county-level Democratic vote share, beyond what traditional predictors already explain?**
 
-Adjusted $R^2 = 0.667$
-F-statistic p-value $< 2.2e-16$
-Residual standard error $= 0.0776$
+**Hypotheses:**
 
-Thus, the model explains about 67% of variation in the response, which is strong for county-level social data.
+$$H_0: \beta_{\text{Unemp}} = \beta_{\text{UnemplComp}} = \beta_{\text{EIC}} = 
+\beta_{\text{ChildTax}} = \beta_{\text{Senior}} = \beta_{\text{SocSec}} = 
+\beta_{\text{Pensions}} = \beta_{\text{Senior} \times \text{SocSec}} = 
+\beta_{\text{EIC} \times \text{Black}} = \beta_{\text{EIC} \times \text{Hispanic}} = 
+\beta_{\text{ChildTax} \times \text{Hispanic}} = 
+\beta_{\text{Senior} \times \text{Bach}} = 
+\beta_{\text{UnemplComp} \times \text{Migr}} = 0$$
 
-## Full Model
+$$H_A: \text{At least one of the above } \beta \neq 0$$
 
-(Need to get approval from Professor Kuiper first before building the Full Model and doing ESS)
+That is, under $H_0$, the economic distress block — including its seven main effects and six theoretically motivated interactions with demographic and prosperity variables — adds no explanatory power beyond Model R. Under $H_A$, at least one distress-related coefficient is nonzero, indicating that economic distress carries unique predictive signal for county-level Democratic vote share beyond traditional controls.
 
-Now that we have our the Reduced Model. We can build our Full Model.
+The ESS F-test therefore covers **13 additional parameters** (7 main effects + 
+6 interactions), with numerator $df = 13$.
 
-## Extra Sum of Squares Test
+```{r ess-test, echo=FALSE}
+ess_result <- anova(lm_R, lm_F)
+print(ess_result)
+
+# Extract key values for inline reporting
+sse_R  <- ess_result$RSS[1]
+sse_F  <- ess_result$RSS[2]
+df_num <- ess_result$Df[2]
+df_den <- ess_result$Res.Df[2]
+f_stat <- ess_result$F[2]
+p_val  <- ess_result$`Pr(>F)`[2]
+
+cat("\n--- ESS F-Test Summary ---\n")
+cat("SSE(Model R):", round(sse_R, 4), "\n")
+cat("SSE(Model F):", round(sse_F, 4), "\n")
+cat("Extra SS (SSE_R - SSE_F):", round(sse_R - sse_F, 4), "\n")
+cat("Numerator df (number of distress predictors):", df_num, "\n")
+cat("Denominator df (Model F residual df):", df_den, "\n")
+cat("F-statistic:", round(f_stat, 4), "\n")
+cat("p-value:", format(p_val, scientific = TRUE), "\n")
+```
+
+**Interpretation:**
 
 
-## Conclusion
+
+# 6. Conclusion
 
 
