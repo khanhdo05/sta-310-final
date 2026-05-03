@@ -465,14 +465,42 @@ best_models_g1 <- data.frame(
 # Plot
 plot(s_g1$adjr2, type = "b",
      xlab = "Number of Variables",
-     ylab = "Adjusted R2",
-     main = "Group 1 — Adjusted R2")
+     ylab = "Adjusted R2")
 best_n_g1 <- which.max(s_g1$adjr2)
 points(best_n_g1, max(s_g1$adjr2), col = "red", pch = 16, cex = 1.5)
 
-plot(fit_g1, scale = "adjr2",
-     main = "Variables Selection for Reduced Model",
-     cex.axis = 0.55)
+# Extract the which matrix and adjr2
+mat    <- s_g1$which          # logical matrix: rows = model size, cols = variables
+adjr2  <- s_g1$adjr2          # adj R² for each model size
+
+# Build a data frame (drop the intercept column)
+df_plot        <- as.data.frame(mat[, -1])   # remove "(Intercept)" column
+df_plot$adjr2  <- round(adjr2, 4)
+df_plot$model  <- seq_len(nrow(df_plot))
+
+# Melt to long format
+df_long <- melt(
+  df_plot,
+  id.vars       = c("model", "adjr2"),
+  variable.name = "Variable",
+  value.name    = "Included"
+)
+
+# Plot
+ggplot(df_long, aes(x = Variable, y = factor(adjr2), fill = Included)) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = c("TRUE" = "black", "FALSE" = "white")) +
+  labs(
+    title = "Variables Selection for Reduced Model (Best Subsets)",
+    x     = NULL,
+    y     = "adj R²"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x    = element_text(angle = 45, hjust = 1, vjust = 1, size = 9),
+    legend.position = "none",
+    panel.grid     = element_blank()
+  )
 ```
 
 
@@ -629,14 +657,42 @@ best_models_g1 <- data.frame(
 # Plot
 plot(s_g1$adjr2, type = "b",
      xlab = "Number of Variables",
-     ylab = "Adjusted R2",
-     main = "Group 1 — Adjusted R2")
+     ylab = "Adjusted R2")
 best_n_g1 <- which.max(s_g1$adjr2)
 points(best_n_g1, max(s_g1$adjr2), col = "red", pch = 16, cex = 1.5)
 
-plot(fit_g1, scale = "adjr2",
-     main = "Variables Selection for Reduced Model",
-     cex.axis = 0.55)
+# Extract the which matrix and adjr2
+mat   <- s_g1$which
+adjr2 <- s_g1$adjr2
+
+# Build data frame (drop intercept column)
+df_plot       <- as.data.frame(mat[, -1])
+df_plot$adjr2 <- round(adjr2, 4)
+df_plot$model <- seq_len(nrow(df_plot))
+
+# Melt to long format
+df_long <- melt(
+  df_plot,
+  id.vars       = c("model", "adjr2"),
+  variable.name = "Variable",
+  value.name    = "Included"
+)
+
+# Plot
+ggplot(df_long, aes(x = Variable, y = factor(adjr2), fill = Included)) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = c("TRUE" = "black", "FALSE" = "white")) +
+  labs(
+    title = "Group 1 — Variables Selection for Reduced Model (Best Subsets)",
+    x     = NULL,
+    y     = "adj R²"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1, vjust = 1, size = 9),
+    legend.position = "none",
+    panel.grid      = element_blank()
+  )
 ```
 
 The transformed variables not only improve model assumptions but also improved overall $R^2$.
@@ -752,14 +808,42 @@ best_models_g2 <- data.frame(
 # Plot
 plot(s_g2$adjr2, type = "b",
      xlab = "Number of Variables",
-     ylab = "Adjusted R2",
-     main = "Group 1 — Adjusted R2")
+     ylab = "Adjusted R2")
 best_n_g2 <- which.max(s_g2$adjr2)
 points(best_n_g2, max(s_g2$adjr2), col = "red", pch = 16, cex = 1.5)
 
-plot(fit_g2, scale = "adjr2",
-     main = "Variables Selection for Reduced Model",
-     cex.axis = 0.55)
+# Extract the which matrix and adjr2
+mat   <- s_g2$which
+adjr2 <- s_g2$adjr2
+
+# Build data frame (drop intercept column)
+df_plot       <- as.data.frame(mat[, -1])
+df_plot$adjr2 <- round(adjr2, 4)
+df_plot$model <- seq_len(nrow(df_plot))
+
+# Melt to long format
+df_long <- melt(
+  df_plot,
+  id.vars       = c("model", "adjr2"),
+  variable.name = "Variable",
+  value.name    = "Included"
+)
+
+# Plot
+ggplot(df_long, aes(x = Variable, y = factor(adjr2), fill = Included)) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = c("TRUE" = "black", "FALSE" = "white")) +
+  labs(
+    title = "Variables Selection for Reduced Model (Best Subsets)",
+    x     = NULL,
+    y     = "adj R²"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1, vjust = 1, size = 9),
+    legend.position = "none",
+    panel.grid      = element_blank()
+  )
 ```
 
 ```{r}
@@ -1038,6 +1122,7 @@ cat("Numerator df (number of distress predictors):", df_num, "\n")
 cat("Denominator df (Model F residual df):", df_den, "\n")
 cat("F-statistic:", round(f_stat, 4), "\n")
 cat("p-value:", format(p_val, scientific = TRUE), "\n")
+cat("final N =", nrow(df6))
 ```
 
 **Interpretation:**
