@@ -1149,7 +1149,20 @@ cat("Numerator df (number of distress predictors):", df_num, "\n")
 cat("Denominator df (Model F residual df):", df_den, "\n")
 cat("F-statistic:", round(f_stat, 4), "\n")
 cat("p-value:", format(p_val, scientific = TRUE), "\n")
-cat("final N =", nrow(df6))
+cat("final N =", nrow(df6), "\n")
+
+# --- Effect Size Calculations ---
+# Extra SS (numerator of F-test)
+extra_ss <- sse_R - sse_F
+
+# 1. local effect of the added predictors = Extra SS / SSE(F)
+f_squared <- extra_ss / sse_F
+cat("Effect Size (local):", round(f_squared, 4), "\n")
+
+# 2. proportion of unexplained variance accounted for by added predictors
+#    partial_eta_sq = Extra SS / (Extra SS + SSE_F)
+partial_eta_sq <- extra_ss / (extra_ss + sse_F)
+cat("Effect Size:", round(partial_eta_sq, 4), "\n")
 ```
 
 **Interpretation:**
