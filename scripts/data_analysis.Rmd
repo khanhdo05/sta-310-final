@@ -900,7 +900,7 @@ The $R^2$ is not overwhelmingly better but the residual plots look better.
 
 We will now test which interaction terms can be important.
 
-```{r}
+```{r echo=FALSE}
 # Build saturated two-way interaction formula from the same variables
 formula_interactions <- as.formula(
   paste("sq_PresDemRatio ~ (", paste(vars_g2, collapse = " + "), ")^2")
@@ -939,10 +939,18 @@ print(significant_main %>% select(term, estimate, p.value))
 We build the final Reduced Model using the selected main effects and theoretically motivated interaction terms that also reach statistical significance.
 
 ```{r echo=FALSE}
+# Extract individual variables from interaction terms
+interaction_vars <- top_interactions$term %>%
+  strsplit(":") %>%
+  unlist() %>%
+  unique()
+
+# Combine: significant main effects + interaction component variables + interaction terms
 selected_terms <- c(
   significant_main$term,
+  interaction_vars,        # ensures sq_PctBlack, log_PctMale etc. are included
   top_interactions$term
-)
+) %>% unique()             # remove any duplicates
 
 formula_reduced <- as.formula(
   paste("sq_PresDemRatio ~", paste(selected_terms, collapse = " + "))
@@ -1154,9 +1162,9 @@ cat("final N =", nrow(df6))
 
 **Interpretation:**
 
-The Extra Sum of Squares F-test yields an F-statistic of 63.27 on 13 and 3,058 degrees of freedom, with a p-value of approximately $1.52 \times 10^{-147}$, a value so small that it sits far beyond any conventional significance threshold. Therefore, we reject our $H_0$ with strong evidence and conclude that the economic distress block, taken together, provides statistically significant explanatory power for county-level Democratic presidential vote share in 2020, beyond what demographic, education, and prosperity variables already contribute.
+The Extra Sum of Squares F-test yields an **F-statistic of 65.66 on 13 and 3,056 degrees of freedom**, with a p-value of approximately $9.12 \times 10^{-153}$, a value so small that it sits far beyond any conventional significance threshold. Therefore, we reject our $H_0$ with strong evidence and conclude that the economic distress block, taken together, provides statistically significant explanatory power for county-level Democratic presidential vote share in 2020, beyond what demographic, education, and prosperity variables already contribute.
 
-To put this in concrete terms, adding the economic distress variables reduced the residual sum of squares from 14.79 in Model R down to 11.66 in Model F, yielding an extra sum of squares of 3.14. Our adjusted $R^2$ value increased from 0.743 to 0.797, a gain of roughly 5.4 percentage. Also, the partial eta-squared value for the economic distress predictors was approximately 0.212, meaning that the 13 economic distress-related terms collectively explain about 21% of the variance that Model R left unexplained. Given how much of county-level voting behavior is already accounted for by demographics, education, and general prosperity, an improvement of this magnitude is not trivial and strongly confirms the importance of these characteristics.
+To put this in concrete terms, adding the economic distress variables reduced the residual sum of squares from 14.69 in Model R down to 11.48 in Model F, yielding an extra sum of squares of 3.21. Our adjusted $R^2$ value increased from 0.745 to 0.7990, a gain of roughly 5.4 percentage. Also, the partial eta-squared value for the economic distress predictors was approximately 0.219, meaning that the 13 economic distress-related terms collectively explain about 21% of the variance that Model R left unexplained. Given how much of county-level voting behavior is already accounted for by demographics, education, and general prosperity, an improvement of this magnitude is not trivial and strongly confirms the importance of these characteristics.
 
 Additionally, we can observe some interesting patterns in the Full Model coefficients behind that improvement. Counties with higher unemployment compensation reliance `sq_PropUnemplComp` tend to lean more Democratic, a pattern that likely reflects post-industrial communities and historically unionized labor markets where safety-net dependency and Democratic allegiance coexisted. Moving in the opposite direction, higher child tax credit reliance `sq_PropChildTax` is negatively associated with Democratic vote share, a conclusion that aligns with Autor, Dorn, and Hanson (2020), who documented how working-poor rural communities have drifted steadily away from the Democratic Party over time.
 
@@ -1164,7 +1172,7 @@ The most interesting finding comes from the interaction between `sq_PctBlack` an
 
 # 6. Conclusion
 
-This analysis examined whether economic distress markers provide statistically significant explanatory power for county-level Democratic presidential vote share in 2020, beyond what demographic, education, and prosperity predictors already explain. Using an Extra Sum of Squares F-test applied to 3,098 U.S. counties, we compared a Reduced Model built from Best Subsets-selected variables across six thematic predictor groups to a Full Model that additionally included seven economic distress indicators and six theoretically motivated interaction terms. The test strongly rejected the null hypothesis that all distress-related coefficients equal zero (F = 63.27, df = 13 and 3,058, p < 0.001), and the economic distress terms improved our adjusted $R^2$ value by approximately 5.4 percentage , accounting for 21% of the residual variance remaining after traditional controls. Taken together, these results support our central claim that economic distress carries an important political explanatory power.
+This analysis examined whether economic distress markers provide statistically significant explanatory power for county-level Democratic presidential vote share in 2020, beyond what demographic, education, and prosperity predictors already explain. Using an Extra Sum of Squares F-test applied to 3,098 U.S. counties, we compared a Reduced Model built from Best Subsets-selected variables across six thematic predictor groups to a Full Model that additionally included seven economic distress indicators and six theoretically motivated interaction terms. The test strongly rejected the null hypothesis that all distress-related coefficients equal zero (F = 65.66, df = 13 and 3,056, p < 0.001), and the economic distress terms improved our adjusted $R^2$ value by approximately 5.4 percentage , accounting for 21% of the residual variance remaining after traditional controls. Taken together, these results support our central claim that economic distress carries an important political explanatory power.
 
 Critically, however, the results do not support a single, uniform relationship between economic distress and Democratic vote share. Instead, different dimensions of distress point in opposing political directions. For instance, higher unemployment compensation reliance is positively associated with Democratic support, while higher child tax credit reliance is negatively associated, meaning that two counties with similarly high levels of economic distress can lean in entirely opposite partisan directions depending on the specific form that distress takes. Most notably, the partisan direction of working poverty is not fixed but depends on the racial composition of a county, with the same level of EIC intensity associated with stronger Democratic support in counties with larger Black populations and weaker Democratic support in predominantly white ones. Taken together, these patterns show us why examining economic distress through individual coefficients alone would have been insufficient. The Extra Sum of Squares framework allowed us to ask a more precise and appropriate question for the nature of this problem.
 
