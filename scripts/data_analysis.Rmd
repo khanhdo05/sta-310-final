@@ -501,7 +501,34 @@ ggplot(df_long, aes(x = Variable, y = factor(adjr2), fill = Included)) +
     legend.position = "none",
     panel.grid     = element_blank()
   )
+
+# ---------------- RESIDUALS VS EACH PREDICTOR ----------------
+# 1. Extract variable names from the best-size model (exclude intercept)
+best_which_g1 <- s_g1$which[best_n_g1, ]
+vars_g1       <- names(best_which_g1)[best_which_g1]   # includes "(Intercept)"
+vars_g1       <- vars_g1[vars_g1 != "(Intercept)"]     # drop it
+
+# 2. Fit an lm so we can call model.frame() and residuals()
+formula_g1 <- as.formula(paste("sq_PresDemRatio ~", paste(vars_g1, collapse = " + ")))
+lm_g1      <- lm(formula_g1, data = df_reduced_candidates)
+
+model_df <- model.frame(lm_g1)
+res      <- residuals(lm_g1)
+
+# 3. Plot
+par(mfrow = c(4, 4), mar = c(3, 3, 2, 1))
+for (v in vars_g1) {
+  plot(model_df[[v]], res,
+       xlab = v,
+       ylab = "Residuals",
+       main = paste("Residuals vs", v),
+       pch  = 16, cex = 0.5,
+       col  = adjustcolor("steelblue", alpha.f = 0.5))
+  abline(h = 0, col = "red", lty = 2)
+}
+par(mfrow = c(1, 1))
 ```
+
 
 
 ### 1.2.6 Applying Transformations
@@ -728,7 +755,7 @@ par(mfrow = c(1, 1))
 # ---------------- RESIDUALS VS EACH PREDICTOR ----------------
 model_df <- model.frame(lm_reduced1)
 res <- residuals(lm_reduced1)
-par(mfrow = c(ceiling(length(vars_g1) / 4), 4), mar = c(3, 3, 2, 1))
+par(mfrow = c(4, 4), mar = c(3, 3, 2, 1))
 for (v in vars_g1) {
   plot(model_df[[v]], res,
        xlab = v,
@@ -949,7 +976,7 @@ term_vals <- lapply(selected_terms, function(term) {
 })
 names(term_vals) <- selected_terms
 
-par(mfrow = c(ceiling(12 / 4), 4), mar = c(3, 3, 2, 1))
+par(mfrow = c(4, 4), mar = c(3, 3, 2, 1))
 for (v in selected_terms) {
   plot(term_vals[[v]], res_final,
        xlab = v, ylab = "Residuals",
@@ -1069,7 +1096,7 @@ term_vals <- lapply(all_terms, function(term) {
 })
 names(term_vals) <- all_terms
 
-par(mfrow = c(ceiling(12 / 4), 4), mar = c(3, 3, 2, 1))
+par(mfrow = c(4, 4), mar = c(3, 3, 2, 1))
 for (v in all_terms) {
   plot(term_vals[[v]], res_final,
        xlab = v, ylab = "Residuals",
@@ -1127,8 +1154,23 @@ cat("final N =", nrow(df6))
 
 **Interpretation:**
 
+The Extra Sum of Squares F-test yields an F-statistic of 63.27 on 13 and 3,058 degrees of freedom, with a p-value of approximately $1.52 \times 10^{-147}$, a value so small that it sits far beyond any conventional significance threshold. Therefore, we reject our $H_0$ with strong evidence and conclude that the economic distress block, taken together, provides statistically significant explanatory power for county-level Democratic presidential vote share in 2020, beyond what demographic, education, and prosperity variables already contribute.
 
+To put this in concrete terms, adding the economic distress variables reduced the residual sum of squares from 14.79 in Model R down to 11.66 in Model F, yielding an extra sum of squares of 3.14. Our adjusted $R^2$ value increased from 0.743 to 0.797, a gain of roughly 5.4 percentage. Also, the partial eta-squared value for the economic distress predictors was approximately 0.212, meaning that the 13 economic distress-related terms collectively explain about 21% of the variance that Model R left unexplained. Given how much of county-level voting behavior is already accounted for by demographics, education, and general prosperity, an improvement of this magnitude is not trivial and strongly confirms the importance of these characteristics.
+
+Additionally, we can observe some interesting patterns in the Full Model coefficients behind that improvement. Counties with higher unemployment compensation reliance `sq_PropUnemplComp` tend to lean more Democratic, a pattern that likely reflects post-industrial communities and historically unionized labor markets where safety-net dependency and Democratic allegiance coexisted. Moving in the opposite direction, higher child tax credit reliance `sq_PropChildTax` is negatively associated with Democratic vote share, a conclusion that aligns with Autor, Dorn, and Hanson (2020), who documented how working-poor rural communities have drifted steadily away from the Democratic Party over time.
+
+The most interesting finding comes from the interaction between `sq_PctBlack` and `sq_PropEICAmount`, where the same level of Earned Income Credit concentration carries an entirely different political meaning depending on the racial composition of a county. In counties with larger Black populations, high EIC intensity is associated with stronger Democratic support, whereas in predominantly white counties, the relationship reverses. This heterogeneity reinforces a core premise of this analysis that economic distress is filtered through the demographic and historical context of each community. In a similar conclusion, the `sq_SeniorBurden:sq_PropSocSec` interaction shows that counties where a large elderly population is also heavily dependent on federal transfer income lean even more strongly Republican than either variable would predict on its own.
 
 # 6. Conclusion
 
+This analysis examined whether economic distress markers provide statistically significant explanatory power for county-level Democratic presidential vote share in 2020, beyond what demographic, education, and prosperity predictors already explain. Using an Extra Sum of Squares F-test applied to 3,098 U.S. counties, we compared a Reduced Model built from Best Subsets-selected variables across six thematic predictor groups to a Full Model that additionally included seven economic distress indicators and six theoretically motivated interaction terms. The test strongly rejected the null hypothesis that all distress-related coefficients equal zero (F = 63.27, df = 13 and 3,058, p < 0.001), and the economic distress terms improved our adjusted $R^2$ value by approximately 5.4 percentage , accounting for 21% of the residual variance remaining after traditional controls. Taken together, these results support our central claim that economic distress carries an important political explanatory power.
+
+Critically, however, the results do not support a single, uniform relationship between economic distress and Democratic vote share. Instead, different dimensions of distress point in opposing political directions. For instance, higher unemployment compensation reliance is positively associated with Democratic support, while higher child tax credit reliance is negatively associated, meaning that two counties with similarly high levels of economic distress can lean in entirely opposite partisan directions depending on the specific form that distress takes. Most notably, the partisan direction of working poverty is not fixed but depends on the racial composition of a county, with the same level of EIC intensity associated with stronger Democratic support in counties with larger Black populations and weaker Democratic support in predominantly white ones. Taken together, these patterns show us why examining economic distress through individual coefficients alone would have been insufficient. The Extra Sum of Squares framework allowed us to ask a more precise and appropriate question for the nature of this problem.
+
+Considering our findings, the model carries some important limitations worth acknowledging. First, the observational and cross-sectional design prevents causal inference. This means that counties are not randomly assigned levels of economic distress, and unobserved variables, such as local political history, religious composition, and union density, which likely contribute to both distress levels and voting behavior in ways the model cannot fully control for. Also, the associations we find may instead reflect decades of demographic sorting, long-running party realignment, or other structural factors. Second, county-level aggregation prevents conclusions about individual voters, a limitation known as the ecological fallacy. High EIC intensity in a county does not mean the individuals casting Democratic or Republican ballots are themselves EIC recipients. Third, 2020 was an unusual election year, because of the COVID-19 pandemic and it reshaped both economic conditions and voting behavior in ways that may not generalize to other election cycles. Results should be interpreted with this historical specificity in mind.
+
+Future research could address these limitations in several directions. Replicating this analysis across multiple election cycles would clarify whether the observed distress effects are stable over time or specific to the 2020 context. Additionally, incorporating more labor market variables, such as the industry-specific job loss rates suggested by Autor, Dorn, and Hanson (2020), could improve the economic distress measures beyond the income-proportion proxies used in this analysis. Lastly, a multilevel modeling approach that accounts for state-level political context would further help separate local economic conditions from broader partisan trends.
+
+This project ultimately demonstrates that political consequences of economic distress are neither uniform nor simple. It carries genuine and statistically distinct explanatory power for political behavior at the county level, and it interacts with race and demographic composition in ways that complicate easy interpretation. A more complete understanding of how localized economic vulnerability shapes electoral outcomes requires continued attention to both the measurement of distress and the demographic contexts in which it operates.
 
