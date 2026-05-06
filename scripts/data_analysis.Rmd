@@ -1075,6 +1075,16 @@ formula_F <- as.formula(
 
 lm_F <- lm(formula_F, data = df6)
 
+residuals_df <- data.frame(
+  FIPS = df6$FIPS,
+  residual_R = residuals(lm_R),
+  fitted_R = fitted(lm_R),
+  residual_F = residuals(lm_F),
+  fitted_F = fitted(lm_F)
+)
+
+write_csv(residuals_df, "../data/clean/model_residuals.csv")
+
 cat("--- FULL MODEL (Model F) SUMMARY ---\n")
 summary(lm_F)
 
