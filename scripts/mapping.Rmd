@@ -1,0 +1,182 @@
+---
+title: "Mapping the Data"
+author: "Khanh Do"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sf)
+library(tigris)
+library(patchwork)
+options(tigris_use_cache = TRUE)
+```
+
+# Read in Data
+
+```{r}
+# Read county data
+url <- "https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/clean/FINAL_DATA.csv"
+df <- read_csv(url, show_col_types = FALSE)
+df <- df %>%
+  mutate(
+    FIPS = as.character(FIPS)
+    )
+
+# Read residuals
+residuals_df <- read_csv(
+  "https://raw.githubusercontent.com/khanhdo05/sta-310-final/main/data/clean/model_residuals.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(FIPS = as.character(FIPS))
+
+# Load county shapefile
+counties_sf <- counties(cb = TRUE, year = 2020) %>%
+  mutate(GEOID = as.character(as.numeric(GEOID)))  # match your FIPS format
+```
+
+# Process Data
+
+```{r}
+# ---------- COUNTY DATA ----------
+# Join your data
+map_sf <- counties_sf %>%
+  left_join(df, by = c("GEOID" = "FIPS"))
+
+# ---------- RESIDS DATA ----------
+# Join to map
+map_sf_resid <- counties_sf %>%
+  left_join(residuals_df, by = c("GEOID" = "FIPS"))
+
+# Shared scale so both maps are visually comparable
+resid_limit <- max(abs(c(residuals_df$residual_R, 
+                          residuals_df$residual_F)), 
+                    na.rm = TRUE)
+```
+
+# Fill Map with Data
+
+```{r}
+# Map 1: Democratic Vote Share
+ggplot(map_sf) +
+  geom_sf(aes(fill = PresDemRatio), color = NA) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE) +
+  scale_fill_gradient2(
+    low = "red", mid = "white", high = "blue",
+    midpoint = 0.5, na.value = "grey90"
+  ) +
+  labs(title = "County-Level Democratic Vote Share, 2020",
+       fill = "PresDemRatio") +
+  theme_void()
+```
+
+
+```{r}
+# Map 2: Distress markers
+map_UnemploymentRate2020 <- ggplot(map_sf) +
+  geom_sf(aes(fill = UnemploymentRate2020), color = NA) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey90") +
+  labs(title = "UnemploymentRate by County",
+       fill = "%") +
+  theme_void()
+
+map_PropUnemplComp <- ggplot(map_sf) +
+  geom_sf(aes(fill = PropUnemplComp), color = NA) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey90") +
+  labs(title = "PropUnemplComp by County",
+       fill = "Proportion") +
+  theme_void()
+
+map_UnemploymentRate2020 + map_PropUnemplComp
+
+map_eic <- ggplot(map_sf) +
+  geom_sf(aes(fill = PropEICAmount), color = NA) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey90") +
+  labs(title = "EIC Intensity by County",
+       fill = "Proportion") +
+  theme_void()
+
+map_child <- ggplot(map_sf) +
+  geom_sf(aes(fill = PropChildTax), color = NA) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey90") +
+  labs(title = "Child Tax Credit Intensity by County",
+       fill = "Proportion") +
+  theme_void()
+
+map_eic + map_child
+
+ggplot(map_sf) +
+  geom_sf(aes(fill = SeniorBurden), color = NA) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey90") +
+  labs(title = "Senior Burden by County",
+       fill = "Ratio (1:n)") +
+  theme_void()
+
+map_soc <- ggplot(map_sf) +
+  geom_sf(aes(fill = PropSocSec), color = NA) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey90") +
+  labs(title = "Social Security Reliance by County",
+       fill = "Proportion") +
+  theme_void()
+
+map_pen <- ggplot(map_sf) +
+  geom_sf(aes(fill = PropPensions), color = NA) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey90") +
+  labs(title = "Pensions Reliance by County",
+       fill = "Proportion") +
+  theme_void()
+
+map_soc + map_pen
+```
+
+
+```{r}
+# Map 3: Reduced Model Residuals
+map_R <- ggplot(map_sf_resid) +
+  geom_sf(aes(fill = residual_R), color = NA) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE) +
+  scale_fill_gradient2(
+    low = "red", mid = "white", high = "blue",
+    midpoint = 0,
+    limits = c(-resid_limit, resid_limit),
+    na.value = "grey90"
+  ) +
+  labs(
+    title = "Reduced Model Residuals",
+    fill = "Residual"
+  ) +
+  theme_void()
+
+# Map 4: Full Model Residuals  
+map_F <- ggplot(map_sf_resid) +
+  geom_sf(aes(fill = residual_F), color = NA) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE) +
+  scale_fill_gradient2(
+    low = "red", mid = "white", high = "blue",
+    midpoint = 0,
+    limits = c(-resid_limit, resid_limit),
+    na.value = "grey90"
+  ) +
+  labs(
+    title = "Full Model Residuals",
+    fill = "Residual"
+  ) +
+  theme_void()
+
+# Display side by side
+map_R + map_F +
+  plot_annotation(
+    title = "Residual Maps: Reduced vs. Full Model",
+    subtitle = "Blue = underpredicted Democratic support,       Red = overpredicted"
+  )
+```
+
