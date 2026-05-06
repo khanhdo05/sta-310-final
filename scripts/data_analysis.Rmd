@@ -194,7 +194,7 @@ cat("Counties removed (population < 100):\n")
 print(small_counties)
 
 df3 <- df3 %>% filter(!FIPS %in% small_counties$FIPS)
-n_after_small <- nrow(df2)
+n_after_small <- nrow(df3)
 ```
 
 **Cook's Distance:**
@@ -426,7 +426,7 @@ pairs(df3 %>% select(sq_PresDemRatio, MedianAge, Pct18_34, Pct65Plus, SeniorBurd
 # Group 6: Urbanization and Population Dynamics
 pairs(df3 %>% select(sq_PresDemRatio, PctUrban, IsMetro, BirthRate2020, 
                          DeathRate2020, MigrationRate2020),
-      main = "Urbanization and Dynamics vs Voting",
+      main = "Urbanization and Population Dynamics vs Voting",
       pch = 16, cex = 0.3,
       col = adjustcolor("dodgerblue", alpha.f = 0.4))
 ```
